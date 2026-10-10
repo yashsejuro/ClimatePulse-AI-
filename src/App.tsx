@@ -1,8 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { Navbar } from './components/Navbar';
 import { Map } from './components/Map';
-import { RouteSearch } from './components/RouteSearch';
-import { RouteComparison } from './components/RouteComparison';
+import { NavigationCard } from './components/NavigationCard';
 import { CitizenReportModal } from './components/CitizenReportModal';
 import { HazardsListModal } from './components/HazardsListModal';
 import {
@@ -22,6 +21,8 @@ import {
   VEHICLE_PROFILES
 } from './data/seedHazards';
 import { calculateDualRoutes } from './services/routingService';
+import { resolveLocation, PlaceResult } from './services/geocodingService';
+import { Layers, Eye, EyeOff } from 'lucide-react';
 
 export default function App() {
   const [currentCity, setCurrentCity] = useState<CityId>('bengaluru');
@@ -59,7 +60,7 @@ export default function App() {
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isHazardsListOpen, setIsHazardsListOpen] = useState(false);
   const [showHazards, setShowHazards] = useState(true);
-  const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('dark');
+  const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('streets');
 
   // Load weather, hazards and scenarios when city changes
   useEffect(() => {
@@ -193,7 +194,36 @@ export default function App() {
     runRouteCalculation();
   }, [currentCity, selectedVehicle]);
 
-  // Handle Scenario Selection
+  // Primary user action: Find Safer Route with real Location Resolution / Geocoding
+  const handleSearchRoute = async () => {
+    setIsLoading(true);
+    let resolvedOriginCoords = originCoords;
+    let resolvedDestCoords = destCoords;
+
+    try {
+      // Trace: FROM INPUT -> LOCATION RESOLUTION -> COORDINATES -> POST /api/route
+      const [resolvedOrigin, resolvedDest] = await Promise.all([
+        resolveLocation(originText, currentCity),
+        resolveLocation(destinationText, currentCity)
+      ]);
+
+      resolvedOriginCoords = resolvedOrigin.coords;
+      resolvedDestCoords = resolvedDest.coords;
+
+      setOriginCoords(resolvedOriginCoords);
+      setDestCoords(resolvedDestCoords);
+    } catch (err) {
+      console.warn('Geocoding resolution fallback to existing coordinates', err);
+    }
+
+    runRouteCalculation({
+      origin: resolvedOriginCoords,
+      dest: resolvedDestCoords,
+      scenarioId: activeScenarioId || undefined
+    });
+  };
+
+  // Handle Scenario Selection (1-click demo corridors)
   const handleSelectScenario = (scenario: PresetScenario) => {
     setActiveScenarioId(scenario.id);
     setOriginText(scenario.origin.name);
@@ -207,27 +237,46 @@ export default function App() {
     });
   };
 
+  // Handle Autocomplete Place Selection
+  const handleSelectOriginPlace = (place: PlaceResult) => {
+    setActiveScenarioId(null);
+    setOriginText(place.name);
+    setOriginCoords(place.coords);
+  };
+
+  const handleSelectDestinationPlace = (place: PlaceResult) => {
+    setActiveScenarioId(null);
+    setDestinationText(place.name);
+    setDestCoords(place.coords);
+  };
+
   // Handle Map Click to set custom point
   const handleMapClick = (coords: [number, number]) => {
-    setActiveScenarioId(null); // Clear preset lock!
+    setActiveScenarioId(null);
     setDestCoords(coords);
     setDestinationText(`Pinned Location (${coords[0].toFixed(4)}, ${coords[1].toFixed(4)})`);
     runRouteCalculation({
       origin: originCoords,
       dest: coords,
-      scenarioId: undefined // Enforce dynamic route calculation!
+      scenarioId: undefined
     });
   };
 
   // Handle text input changes
   const handleChangeOrigin = (val: string) => {
-    setActiveScenarioId(null); // Clear preset lock!
+    setActiveScenarioId(null);
     setOriginText(val);
   };
 
   const handleChangeDestination = (val: string) => {
-    setActiveScenarioId(null); // Clear preset lock!
+    setActiveScenarioId(null);
     setDestinationText(val);
+  };
+
+  // Reset search / back to inputs
+  const handleNewSearch = () => {
+    setComparison(null);
+    setIsSimulating(false);
   };
 
   // Drive Simulation Loop
@@ -325,7 +374,7 @@ export default function App() {
         };
       }
 
-      // Dynamically recalculate routes factoring in new hazard
+      // Recalculate routes factoring in new hazard
       setTimeout(() => {
         runRouteCalculation();
       }, 250);
@@ -347,7 +396,7 @@ export default function App() {
     }
   };
 
-  // Reset to initial data
+  // Reset to initial seed data
   const handleResetData = async () => {
     setHazards(INITIAL_HAZARDS);
     try {
@@ -359,137 +408,113 @@ export default function App() {
   const cityMeta = CITY_CENTERS[currentCity] || CITY_CENTERS.bengaluru;
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col font-sans selection:bg-emerald-500 selection:text-slate-950">
-      {/* Top Navbar */}
+    <div className="relative w-full h-screen overflow-hidden flex flex-col bg-gray-50 text-gray-900 font-sans selection:bg-emerald-100 selection:text-emerald-900">
+      {/* Slim Top Navbar */}
       <Navbar
         currentCity={currentCity}
         onSelectCity={setCurrentCity}
-        weather={weather}
-        activeHazardsCount={hazards.filter((h) => h.city === currentCity).length}
         onOpenReportModal={() => setIsReportModalOpen(true)}
-        onOpenHazardsList={() => setIsHazardsListOpen(true)}
         onResetData={handleResetData}
       />
 
-      {/* Main Command Center Split View */}
-      <main className="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 flex flex-col lg:flex-row gap-6">
-        {/* Left Column: Interactive Map Canvas (60% width on Desktop) */}
-        <section className="w-full lg:w-7/12 flex flex-col gap-3 min-h-[440px] lg:min-h-[640px]">
-          {/* Map Controls Bar */}
-          <div className="flex items-center justify-between text-xs text-slate-400 px-1">
-            <div className="flex items-center gap-3">
-              <span className="font-semibold text-slate-300">
-                {cityMeta.name} Corridor View
-              </span>
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-700"></span>
-              <label className="flex items-center gap-1.5 cursor-pointer hover:text-white">
-                <input
-                  type="checkbox"
-                  checked={showHazards}
-                  onChange={(e) => setShowHazards(e.target.checked)}
-                  className="rounded accent-emerald-500"
-                />
-                <span>Hazard Danger Zones</span>
-              </label>
-            </div>
+      {/* Main Map Canvas Area (Full Viewport Height) */}
+      <div className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden">
+        {/* Full-bleed interactive Map */}
+        <Map
+          center={cityMeta.center}
+          zoom={cityMeta.zoom}
+          hazards={hazards.filter((h) => h.city === currentCity)}
+          citizenReports={citizenReports.filter((r) => r.city === currentCity)}
+          fastestRoute={comparison?.fastest || null}
+          safeRoute={comparison?.safe || null}
+          selectedRouteType={selectedRouteType}
+          onSelectRouteType={setSelectedRouteType}
+          origin={{ name: originText, coords: originCoords }}
+          destination={{ name: destinationText, coords: destCoords }}
+          onMapClick={handleMapClick}
+          simulationPosition={simulationPosition}
+          showHazards={showHazards}
+          mapTileTheme={mapTileTheme}
+        />
 
-            <div className="flex items-center gap-2">
-              <button
-                onClick={() => setMapTileTheme((t) => (t === 'dark' ? 'streets' : 'dark'))}
-                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 transition-colors cursor-pointer"
-              >
-                {mapTileTheme === 'dark' ? '🌙 Dark Mode Tiles' : '☀️ Light Tiles'}
-              </button>
-            </div>
-          </div>
-
-          {/* Interactive Leaflet Map */}
-          <div className="flex-1 w-full rounded-2xl overflow-hidden border border-slate-800 shadow-2xl relative">
-            <Map
-              center={cityMeta.center}
-              zoom={cityMeta.zoom}
-              hazards={hazards.filter((h) => h.city === currentCity)}
-              citizenReports={citizenReports.filter((r) => r.city === currentCity)}
-              fastestRoute={comparison?.fastest || null}
-              safeRoute={comparison?.safe || null}
-              selectedRouteType={selectedRouteType}
-              onSelectRouteType={setSelectedRouteType}
-              origin={{ name: originText, coords: originCoords }}
-              destination={{ name: destinationText, coords: destCoords }}
-              onMapClick={handleMapClick}
-              simulationPosition={simulationPosition}
-              showHazards={showHazards}
-              mapTileTheme={mapTileTheme}
-            />
-
-            {/* Simulation Active HUD */}
-            {isSimulating && (
-              <div className="absolute bottom-4 left-4 right-4 z-20 bg-slate-900/95 backdrop-blur-md p-3 rounded-xl border border-emerald-500/50 shadow-2xl flex items-center justify-between text-xs">
-                <div className="flex items-center gap-3">
-                  <span className="w-3 h-3 rounded-full bg-emerald-400 animate-ping"></span>
-                  <div>
-                    <div className="font-bold text-white flex items-center gap-2">
-                      <span>Simulating Drive: {selectedRouteType === 'SAFE' ? 'ClimatePulse Safe Corridor' : 'Fastest Route'}</span>
-                      <span className="text-[10px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-400 font-mono">
-                        Active Guidance
-                      </span>
-                    </div>
-                    <div className="text-[11px] text-slate-400 mt-0.5">
-                      Waypoint step {simulationIndex + 1} of{' '}
-                      {(selectedRouteType === 'SAFE'
-                        ? comparison?.safe.coordinates.length
-                        : comparison?.fastest.coordinates.length) || 0}
-                    </div>
-                  </div>
-                </div>
-                <button
-                  onClick={() => setIsSimulating(false)}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white font-medium cursor-pointer"
-                >
-                  Exit HUD
-                </button>
-              </div>
-            )}
-          </div>
-        </section>
-
-        {/* Right Column: Search, Comparison & Analysis Panels (40% width on Desktop) */}
-        <section className="w-full lg:w-5/12 flex flex-col gap-4">
-          {/* Route Search & Scenario Selector */}
-          <RouteSearch
+        {/* Floating Navigation Card (Google/Apple Maps style on left) */}
+        <div className="absolute top-4 left-4 z-20 w-96 sm:w-[410px] max-w-[calc(100vw-32px)]">
+          <NavigationCard
+            city={currentCity}
             scenarios={cityScenarios}
-            activeScenarioId={activeScenarioId}
-            onSelectScenario={handleSelectScenario}
             originText={originText}
             destinationText={destinationText}
             onChangeOrigin={handleChangeOrigin}
             onChangeDestination={handleChangeDestination}
+            onSelectOriginPlace={handleSelectOriginPlace}
+            onSelectDestinationPlace={handleSelectDestinationPlace}
+            onSelectScenario={handleSelectScenario}
+            onSearchRoute={handleSearchRoute}
+            isLoading={isLoading}
+            comparison={comparison}
+            selectedRouteType={selectedRouteType}
+            onSelectRouteType={setSelectedRouteType}
             selectedVehicle={selectedVehicle}
             onSelectVehicle={setSelectedVehicle}
-            onCalculate={() =>
-              runRouteCalculation({
-                origin: originCoords,
-                dest: destCoords,
-                scenarioId: activeScenarioId || undefined
-              })
-            }
-            isLoading={isLoading}
+            isSimulating={isSimulating}
+            onToggleSimulation={() => setIsSimulating((s) => !s)}
+            aiBriefing={aiBriefing}
+            onNewSearch={handleNewSearch}
           />
+        </div>
 
-          {/* Route Comparison Card & Risk Metrics */}
-          {comparison && (
-            <RouteComparison
-              comparison={comparison}
-              selectedRouteType={selectedRouteType}
-              onSelectRouteType={setSelectedRouteType}
-              isSimulating={isSimulating}
-              onToggleSimulation={() => setIsSimulating((s) => !s)}
-              aiBriefing={aiBriefing}
-              isLoadingBriefing={isLoadingBriefing}
-            />
-          )}
-        </section>
-      </main>
+        {/* Floating Map Controls on Top-Right */}
+        <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
+          {/* Toggle Flood Hazards */}
+          <button
+            onClick={() => setShowHazards((prev) => !prev)}
+            className={`px-3 py-2 rounded-xl text-xs font-semibold shadow-md border transition-colors flex items-center gap-1.5 cursor-pointer ${
+              showHazards
+                ? 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
+                : 'bg-gray-100 text-gray-500 border-gray-300'
+            }`}
+            title="Toggle visibility of flood hazard danger zones"
+          >
+            {showHazards ? <Eye className="w-3.5 h-3.5 text-emerald-700" /> : <EyeOff className="w-3.5 h-3.5" />}
+            <span className="hidden sm:inline">Flood Hazards</span>
+          </button>
+
+          {/* Map Tile Theme Toggle */}
+          <button
+            onClick={() => setMapTileTheme((t) => (t === 'dark' ? 'streets' : 'dark'))}
+            className="px-3 py-2 rounded-xl bg-white text-gray-800 hover:bg-gray-50 border border-gray-200 shadow-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
+            title="Toggle Street Map vs Satellite Dark"
+          >
+            <Layers className="w-3.5 h-3.5 text-gray-600" />
+            <span className="hidden sm:inline">{mapTileTheme === 'dark' ? 'Streets' : 'Dark'}</span>
+          </button>
+        </div>
+
+        {/* Drive Simulation Floating Active HUD */}
+        {isSimulating && (
+          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-30 bg-white/95 border border-gray-300 shadow-xl px-4 py-2.5 rounded-full flex items-center gap-4 text-xs font-medium">
+            <div className="flex items-center gap-2">
+              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
+              <span className="text-gray-900 font-semibold">
+                Simulating {selectedRouteType === 'SAFE' ? 'Safe Route' : 'Fastest Route'}
+              </span>
+              <span className="text-gray-400">·</span>
+              <span className="text-gray-500">
+                Step {simulationIndex + 1} of{' '}
+                {(selectedRouteType === 'SAFE'
+                  ? comparison?.safe.coordinates.length
+                  : comparison?.fastest.coordinates.length) || 0}
+              </span>
+            </div>
+            <button
+              onClick={() => setIsSimulating(false)}
+              className="px-2.5 py-1 rounded-full bg-red-100 hover:bg-red-200 text-red-800 font-semibold cursor-pointer text-[11px]"
+            >
+              Stop
+            </button>
+          </div>
+        )}
+      </div>
 
       {/* Citizen Hazard Reporting Modal */}
       <CitizenReportModal

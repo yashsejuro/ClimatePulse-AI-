@@ -11,12 +11,12 @@ interface MapProps {
   safeRoute: RouteOption | null;
   selectedRouteType: 'FASTEST' | 'SAFE';
   onSelectRouteType: (type: 'FASTEST' | 'SAFE') => void;
-  origin: { name: string; coords: [number, number] } | null;
-  destination: { name: string; coords: [number, number] } | null;
+  origin?: { name: string; coords: [number, number] };
+  destination?: { name: string; coords: [number, number] };
   onMapClick?: (coords: [number, number]) => void;
   simulationPosition?: [number, number] | null;
-  showHazards: boolean;
-  mapTileTheme: 'dark' | 'streets';
+  showHazards?: boolean;
+  mapTileTheme?: 'dark' | 'streets';
 }
 
 export const Map: React.FC<MapProps> = ({
@@ -32,40 +32,43 @@ export const Map: React.FC<MapProps> = ({
   destination,
   onMapClick,
   simulationPosition,
-  showHazards,
-  mapTileTheme
+  showHazards = true,
+  mapTileTheme = 'streets'
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
   const tileLayerRef = useRef<L.TileLayer | null>(null);
+
+  // Layer groups to efficiently redraw layers without recreating the map
   const hazardsLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const routesLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const markersLayerGroupRef = useRef<L.LayerGroup | null>(null);
   const simMarkerRef = useRef<L.Marker | null>(null);
 
-  // Initialize Map Once
+  // Initialize Leaflet Map
   useEffect(() => {
     if (!mapContainerRef.current || mapInstanceRef.current) return;
 
     const map = L.map(mapContainerRef.current, {
       center,
       zoom,
-      zoomControl: false
+      zoomControl: true,
+      attributionControl: true
     });
 
-    L.control.zoom({ position: 'bottomright' }).addTo(map);
+    mapInstanceRef.current = map;
 
-    hazardsLayerGroupRef.current = L.layerGroup().addTo(map);
-    routesLayerGroupRef.current = L.layerGroup().addTo(map);
-    markersLayerGroupRef.current = L.layerGroup().addTo(map);
-
+    // Attach click listener for custom point selection
     map.on('click', (e: L.LeafletMouseEvent) => {
       if (onMapClick) {
         onMapClick([e.latlng.lat, e.latlng.lng]);
       }
     });
 
-    mapInstanceRef.current = map;
+    // Create persistent layer groups
+    hazardsLayerGroupRef.current = L.layerGroup().addTo(map);
+    routesLayerGroupRef.current = L.layerGroup().addTo(map);
+    markersLayerGroupRef.current = L.layerGroup().addTo(map);
 
     return () => {
       map.remove();
@@ -82,14 +85,15 @@ export const Map: React.FC<MapProps> = ({
       map.removeLayer(tileLayerRef.current);
     }
 
-    // High-resolution reliable tile endpoints without watermarks or blocking
-    const darkTileUrl = 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-    const lightTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
-    
+    const darkTileUrl =
+      'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+    const lightTileUrl =
+      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+
     const tileUrl = mapTileTheme === 'dark' ? darkTileUrl : lightTileUrl;
 
     const tile = L.tileLayer(tileUrl, {
-      attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+      attribution: 'Tiles &copy; Esri',
       maxZoom: 18
     }).addTo(map);
 
@@ -113,26 +117,25 @@ export const Map: React.FC<MapProps> = ({
 
     hazards.forEach((hazard) => {
       const isCritical = hazard.severity === 'CRITICAL';
-      const color = isCritical ? '#ef4444' : hazard.severity === 'HIGH' ? '#f97316' : '#eab308';
+      const color = isCritical ? '#dc2626' : hazard.severity === 'HIGH' ? '#ea580c' : '#ca8a04';
 
-      // Outer Danger Perimeter
+      // Flood perimeter circle
       const circle = L.circle(hazard.center, {
         radius: hazard.radiusMeters,
         color,
         fillColor: color,
-        fillOpacity: 0.22,
-        weight: 2,
-        dashArray: isCritical ? '6, 6' : undefined
+        fillOpacity: 0.16,
+        weight: 1.5,
+        dashArray: isCritical ? '4, 4' : undefined
       });
 
-      // Marker Icon with depth badge
+      // Clean pill badge for hazard
       const iconHtml = `
-        <div class="relative flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
-          <span class="absolute w-8 h-8 rounded-full ${isCritical ? 'bg-red-500/30' : 'bg-amber-500/30'} animate-ping"></span>
-          <div class="relative flex items-center gap-1.5 px-2.5 py-1 rounded-full shadow-lg border border-white/20 text-xs font-semibold text-white ${
-            isCritical ? 'bg-red-600' : 'bg-amber-600'
-          }">
-            <svg class="w-3.5 h-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+        <div class="flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto">
+          <div class="flex items-center gap-1 px-2 py-0.5 rounded-md shadow-sm border ${
+            isCritical ? 'bg-red-50 border-red-300 text-red-700' : 'bg-amber-50 border-amber-300 text-amber-800'
+          } text-[11px] font-semibold">
+            <span>⚠</span>
             <span>${hazard.waterDepthCm} cm</span>
           </div>
         </div>
@@ -142,27 +145,27 @@ export const Map: React.FC<MapProps> = ({
         icon: L.divIcon({
           html: iconHtml,
           className: 'hazard-custom-icon',
-          iconSize: [80, 30],
-          iconAnchor: [40, 15]
+          iconSize: [64, 24],
+          iconAnchor: [32, 12]
         })
       });
 
       const popupHtml = `
-        <div class="p-3 text-slate-100 max-w-xs">
-          <div class="flex items-center justify-between gap-2 mb-1.5">
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold uppercase tracking-wider ${
-              isCritical ? 'bg-red-950 text-red-300 border border-red-700/50' : 'bg-amber-950 text-amber-300 border border-amber-700/50'
-            }">${hazard.severity} HAZARD</span>
-            <span class="text-xs text-slate-400 font-mono">${hazard.waterDepthCm} cm deep</span>
+        <div class="p-3 text-gray-900 max-w-xs font-sans text-xs">
+          <div class="flex items-center justify-between gap-2 mb-1">
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-bold uppercase ${
+              isCritical ? 'bg-red-100 text-red-700' : 'bg-amber-100 text-amber-800'
+            }">${hazard.severity} RISK</span>
+            <span class="text-gray-500 font-medium">${hazard.waterDepthCm} cm water depth</span>
           </div>
-          <div class="font-bold text-sm text-white mb-0.5">${hazard.name}</div>
-          <div class="text-xs text-slate-300 mb-2">${hazard.roadName}</div>
-          <div class="text-xs text-slate-400 bg-slate-900/80 p-2 rounded border border-slate-800 mb-2">
+          <div class="font-bold text-sm text-gray-900 mb-0.5">${hazard.name}</div>
+          <div class="text-gray-600 mb-1.5">${hazard.roadName}</div>
+          <div class="text-gray-600 bg-gray-50 p-2 rounded border border-gray-200 mb-2">
             ${hazard.notes}
           </div>
-          <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
-            <span>🌧️ Rain: ${hazard.rainfallIntensityMmPerHour} mm/h</span>
-            <span class="text-emerald-400 font-medium">VERIFIED HOTSPOT</span>
+          <div class="flex items-center justify-between text-[11px] text-gray-500 pt-1 border-t border-gray-200">
+            <span>Rain: ${hazard.rainfallIntensityMmPerHour} mm/h</span>
+            <span class="text-emerald-700 font-medium">Active Zone</span>
           </div>
         </div>
       `;
@@ -177,10 +180,10 @@ export const Map: React.FC<MapProps> = ({
     // Add Citizen Report Markers
     citizenReports.forEach((report) => {
       const reportHtml = `
-        <div class="relative flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
-          <div class="flex items-center gap-1 px-2 py-0.5 rounded-full shadow-md bg-purple-600 border border-purple-300/40 text-[11px] font-medium text-white">
+        <div class="flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2 pointer-events-auto">
+          <div class="flex items-center gap-1 px-2 py-0.5 rounded-md shadow-sm bg-white border border-gray-300 text-[11px] font-medium text-gray-800">
             <span>📷</span>
-            <span>${report.bedrockConfidenceScore}% AI</span>
+            <span>${report.waterDepthCm} cm</span>
           </div>
         </div>
       `;
@@ -189,26 +192,25 @@ export const Map: React.FC<MapProps> = ({
         icon: L.divIcon({
           html: reportHtml,
           className: 'citizen-marker',
-          iconSize: [70, 24],
-          iconAnchor: [35, 12]
+          iconSize: [60, 22],
+          iconAnchor: [30, 11]
         })
       });
 
       const popupHtml = `
-        <div class="p-3 text-slate-100 max-w-xs">
-          <div class="flex items-center justify-between mb-1.5">
-            <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-purple-950 text-purple-300 border border-purple-800">
+        <div class="p-3 text-gray-900 max-w-xs font-sans text-xs">
+          <div class="flex items-center justify-between mb-1">
+            <span class="px-1.5 py-0.5 rounded text-[10px] font-semibold bg-gray-100 text-gray-800">
               CITIZEN REPORT
             </span>
-            <span class="text-xs text-emerald-400 font-semibold">${report.bedrockConfidenceScore}% Verified</span>
+            <span class="text-emerald-700 font-semibold">${report.bedrockConfidenceScore}% verified</span>
           </div>
-          <div class="font-bold text-sm text-white mb-1">${report.address}</div>
-          <div class="text-xs text-slate-300 mb-2">${report.userNotes}</div>
-          <div class="text-[11px] text-slate-400 bg-slate-900 p-2 rounded mb-2 border border-slate-800 space-y-1">
-            <div class="text-purple-300 font-semibold">AI Vision Indicators:</div>
+          <div class="font-bold text-sm text-gray-900 mb-1">${report.address}</div>
+          <div class="text-gray-600 mb-1.5">${report.userNotes}</div>
+          <div class="text-[11px] text-gray-500 bg-gray-50 p-2 rounded mb-2 border border-gray-200">
             ${report.detectedFloodIndicators.map((ind) => `<div>• ${ind}</div>`).join('')}
           </div>
-          <div class="text-[10px] text-slate-500">Estimated Depth: ${report.waterDepthCm} cm (${report.estimatedDepth})</div>
+          <div class="text-[10px] text-gray-400">Recorded Depth: ${report.waterDepthCm} cm</div>
         </div>
       `;
 
@@ -227,25 +229,24 @@ export const Map: React.FC<MapProps> = ({
 
     const boundsPoints: [number, number][] = [];
 
-    // 1. Draw Fastest Route
+    // 1. Draw Fastest Route (Warning red/gray)
     if (fastestRoute && fastestRoute.coordinates.length > 0) {
       const isSelected = selectedRouteType === 'FASTEST';
       const hasHazards = fastestRoute.hazardsIntersected.length > 0;
-      const strokeColor = hasHazards ? '#ef4444' : '#64748b';
+      const strokeColor = hasHazards ? '#dc2626' : '#64748b';
 
-      // Route Outer Glow / Casing
+      // White casing for clear road contrast
       const casing = L.polyline(fastestRoute.coordinates, {
-        color: '#000000',
-        weight: isSelected ? 8 : 5,
-        opacity: 0.6
+        color: '#ffffff',
+        weight: isSelected ? 7 : 5,
+        opacity: 0.9
       });
 
-      // Main Polyline
       const polyline = L.polyline(fastestRoute.coordinates, {
         color: strokeColor,
-        weight: isSelected ? 6 : 4,
+        weight: isSelected ? 5 : 3.5,
         opacity: isSelected ? 0.95 : 0.6,
-        dashArray: hasHazards ? '8, 8' : undefined
+        dashArray: hasHazards ? '6, 6' : undefined
       });
 
       polyline.on('click', () => onSelectRouteType('FASTEST'));
@@ -254,25 +255,24 @@ export const Map: React.FC<MapProps> = ({
       layerGroup.addLayer(casing);
       layerGroup.addLayer(polyline);
 
-      fastestRoute.coordinates.forEach((c) => boundsPoints.push(c));
+      fastestRoute.coordinates.forEach((c: [number, number]) => boundsPoints.push(c));
     }
 
-    // 2. Draw Safe Route (Bright Emerald / Cyan)
+    // 2. Draw Safe Route (Solid restrained emerald green)
     if (safeRoute && safeRoute.coordinates.length > 0) {
       const isSelected = selectedRouteType === 'SAFE';
 
-      // Glow casing
+      // White casing for clean look
       const casing = L.polyline(safeRoute.coordinates, {
-        color: isSelected ? '#064e3b' : '#022c22',
-        weight: isSelected ? 9 : 6,
-        opacity: 0.8
+        color: '#ffffff',
+        weight: isSelected ? 8 : 6,
+        opacity: 0.95
       });
 
-      // Main polyline
       const polyline = L.polyline(safeRoute.coordinates, {
-        color: '#10b981',
-        weight: isSelected ? 6 : 4,
-        opacity: isSelected ? 1.0 : 0.75
+        color: '#059669',
+        weight: isSelected ? 5.5 : 4,
+        opacity: isSelected ? 1.0 : 0.8
       });
 
       polyline.on('click', () => onSelectRouteType('SAFE'));
@@ -281,13 +281,13 @@ export const Map: React.FC<MapProps> = ({
       layerGroup.addLayer(casing);
       layerGroup.addLayer(polyline);
 
-      safeRoute.coordinates.forEach((c) => boundsPoints.push(c));
+      safeRoute.coordinates.forEach((c: [number, number]) => boundsPoints.push(c));
     }
 
     // Fit map bounds to encompass both routes smoothly
     if (boundsPoints.length > 0) {
       const bounds = L.latLngBounds(boundsPoints.map((c) => L.latLng(c[0], c[1])));
-      map.fitBounds(bounds, { padding: [60, 60], maxZoom: 14, animate: true });
+      map.fitBounds(bounds, { padding: [50, 50], maxZoom: 14, animate: true });
     }
   }, [fastestRoute, safeRoute, selectedRouteType]);
 
@@ -301,8 +301,8 @@ export const Map: React.FC<MapProps> = ({
     if (origin) {
       const originHtml = `
         <div class="flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
-          <div class="relative flex items-center justify-center w-8 h-8 rounded-full bg-emerald-500 shadow-xl border-2 border-white text-white">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="M4.93 4.93l1.41 1.41"/><path d="M17.66 17.66l1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="M6.34 17.66l-1.41 1.41"/><path d="M19.07 4.93l-1.41 1.41"/></svg>
+          <div class="flex items-center justify-center w-7 h-7 rounded-full bg-emerald-700 shadow-md border-2 border-white text-white font-bold text-xs">
+            A
           </div>
         </div>
       `;
@@ -311,10 +311,10 @@ export const Map: React.FC<MapProps> = ({
         icon: L.divIcon({
           html: originHtml,
           className: 'origin-marker',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
         })
-      }).bindTooltip(`<b>Start:</b> ${origin.name}`, { direction: 'top', offset: [0, -14] });
+      }).bindTooltip(`<b>Start:</b> ${origin.name}`, { direction: 'top', offset: [0, -12] });
 
       layerGroup.addLayer(marker);
     }
@@ -322,8 +322,8 @@ export const Map: React.FC<MapProps> = ({
     if (destination) {
       const destHtml = `
         <div class="flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
-          <div class="relative flex items-center justify-center w-8 h-8 rounded-full bg-blue-600 shadow-xl border-2 border-white text-white">
-            <svg class="w-4 h-4" fill="none" stroke="currentColor" stroke-width="2.5" viewBox="0 0 24 24"><path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/><line x1="4" y1="22" x2="4" y2="15"/></svg>
+          <div class="flex items-center justify-center w-7 h-7 rounded-full bg-blue-700 shadow-md border-2 border-white text-white font-bold text-xs">
+            B
           </div>
         </div>
       `;
@@ -332,10 +332,10 @@ export const Map: React.FC<MapProps> = ({
         icon: L.divIcon({
           html: destHtml,
           className: 'dest-marker',
-          iconSize: [32, 32],
-          iconAnchor: [16, 16]
+          iconSize: [28, 28],
+          iconAnchor: [14, 14]
         })
-      }).bindTooltip(`<b>Destination:</b> ${destination.name}`, { direction: 'top', offset: [0, -14] });
+      }).bindTooltip(`<b>Destination:</b> ${destination.name}`, { direction: 'top', offset: [0, -12] });
 
       layerGroup.addLayer(marker);
     }
@@ -349,9 +349,9 @@ export const Map: React.FC<MapProps> = ({
     if (simulationPosition) {
       if (!simMarkerRef.current) {
         const vehicleHtml = `
-          <div class="relative flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
-            <div class="w-6 h-6 rounded-full bg-emerald-400 border-2 border-white shadow-lg flex items-center justify-center text-slate-900 font-bold text-xs animate-bounce">
-              🚘
+          <div class="flex items-center justify-center transform -translate-x-1/2 -translate-y-1/2">
+            <div class="w-7 h-7 rounded-full bg-white border border-gray-300 shadow-md flex items-center justify-center text-xs">
+              🚗
             </div>
           </div>
         `;
@@ -372,26 +372,22 @@ export const Map: React.FC<MapProps> = ({
   }, [simulationPosition]);
 
   return (
-    <div className="relative w-full h-full min-h-[380px] overflow-hidden rounded-xl border border-slate-800 bg-slate-950">
+    <div className="relative w-full h-full min-h-[380px] overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
-      {/* Floating Legend Overlay */}
-      <div className="absolute top-4 left-4 z-10 flex flex-col gap-2 bg-slate-900/90 backdrop-blur-md px-3.5 py-3 rounded-xl border border-slate-800 shadow-2xl text-xs text-slate-200">
-        <div className="font-semibold text-slate-100 flex items-center gap-2 pb-1.5 border-b border-slate-800">
-          <span className="w-2.5 h-2.5 rounded-full bg-emerald-500"></span>
-          <span>Live Cartographic Layer</span>
+      {/* Clean Map Legend */}
+      <div className="absolute bottom-4 right-4 z-10 flex flex-col gap-1.5 bg-white/95 px-3 py-2.5 rounded-xl border border-gray-200 shadow-md text-xs text-gray-700">
+        <div className="flex items-center gap-2">
+          <span className="w-4 h-1.5 rounded-full bg-emerald-600"></span>
+          <span className="font-medium text-emerald-950">Safe Route</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-4 h-1.5 rounded-full bg-emerald-500"></span>
-          <span>ClimatePulse Safe Route</span>
+          <span className="w-4 h-1.5 rounded-full bg-red-600"></span>
+          <span className="font-medium text-gray-800">Fastest (Flooded)</span>
         </div>
         <div className="flex items-center gap-2">
-          <span className="w-4 h-1.5 rounded-full bg-red-500 border border-dashed border-red-300"></span>
-          <span>Standard Fastest (Compromised)</span>
-        </div>
-        <div className="flex items-center gap-2">
-          <span className="w-3 h-3 rounded-full bg-red-600/40 border border-red-500"></span>
-          <span>Active Inundation Hazard</span>
+          <span className="w-2.5 h-2.5 rounded-full bg-red-100 border border-red-500"></span>
+          <span className="text-gray-600">Flood Hazard Zone</span>
         </div>
       </div>
     </div>

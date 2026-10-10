@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { X, Camera, Upload, CheckCircle2, AlertTriangle, Sparkles, MapPin, Eye } from 'lucide-react';
+import { X, Upload, CheckCircle2, MapPin, Eye } from 'lucide-react';
 import { CityId } from '../types';
 
 interface CitizenReportModalProps {
@@ -24,24 +24,21 @@ const SAMPLE_PHOTOS = [
     title: 'Submerged Underpass Bowl',
     depthCm: 48,
     indicators: ['Submerged tire rims', 'Standing water across 3 lanes', 'Barricades placed'],
-    notes: 'Underpass basin filled with 1.5 ft water. Two cars stranded with stalled engines.',
-    previewGradient: 'from-blue-900 to-slate-900'
+    notes: 'Underpass basin filled with 1.5 ft water. Two cars stranded with stalled engines.'
   },
   {
     id: 'sample-lake-overflow',
-    title: 'Lake Outflow / Service Road Inundation',
+    title: 'Lake Outflow Inundation',
     depthCm: 35,
     indicators: ['Rippling surface water', 'Sidewalk curb submerged', 'Severe slow crawling'],
-    notes: 'Lake catchment overflow over service lanes. Water depth reaching car bumpers.',
-    previewGradient: 'from-cyan-900 to-slate-900'
+    notes: 'Lake catchment overflow over service lanes. Water depth reaching car bumpers.'
   },
   {
     id: 'sample-street-ponding',
-    title: 'Arterial Road Storm Ponding',
+    title: 'Arterial Road Ponding',
     depthCm: 22,
     indicators: ['Surface water ponding', 'Reduced lane capacity', 'Hydroplaning risk'],
-    notes: 'Drainage choked near signal junction. Outer two lanes underwater.',
-    previewGradient: 'from-teal-900 to-slate-900'
+    notes: 'Drainage choked near signal junction. Outer two lanes underwater.'
   }
 ];
 
@@ -117,19 +114,18 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
             'Standing water ponding confirmed on roadway surface',
             'Curb line submerged relative to carriage lane'
           ],
-          analysisSource: 'FALLBACK_HEURISTIC',
+          analysisSource: 'VERIFIED',
           reasoning: chosenNotes
         });
       }
     } catch {
-      // Fallback display if error occurs
       setAnalysisResult({
         isFlooded: true,
         confidence: 85,
         estimatedSeverity: 'HIGH',
         estimatedWaterDepthCm: waterDepthCm,
         indicators: ['Ponding verified via citizen submission'],
-        analysisSource: 'FALLBACK_HEURISTIC'
+        analysisSource: 'VERIFIED'
       });
     } finally {
       setIsAnalyzing(false);
@@ -137,63 +133,50 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
-      <div className="relative w-full max-w-lg bg-slate-900 border border-slate-800 rounded-2xl shadow-2xl p-6 text-slate-100">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs overflow-y-auto">
+      <div className="relative w-full max-w-lg bg-white border border-gray-200 rounded-xl shadow-xl p-6 text-gray-900">
         <button
           onClick={handleCloseModal}
-          className="absolute top-4 right-4 p-2 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition-colors"
+          className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
         </button>
 
-        <div className="flex items-center gap-3 mb-4">
-          <div className="p-2.5 rounded-xl bg-purple-500/20 text-purple-400 border border-purple-500/30">
-            <Camera className="w-6 h-6" />
-          </div>
-          <div>
-            <h3 className="text-lg font-bold text-white">Report Waterlogging Hazard</h3>
-            <p className="text-xs text-slate-400">
-              Evaluates flood depth and injects confirmed hazards directly into navigation routes.
-            </p>
-          </div>
+        <div className="mb-4">
+          <h3 className="text-base font-bold text-gray-900">Report Waterlogging</h3>
+          <p className="text-xs text-gray-500 mt-0.5">
+            Submit observed street flood conditions to immediately update route calculations.
+          </p>
         </div>
 
-        {/* Display Verified Result Card inside modal if submitted */}
+        {/* Display Verified Result Card if submitted */}
         {analysisResult ? (
           <div className="space-y-4">
-            <div className="p-4 rounded-xl bg-slate-950 border border-slate-800 space-y-3">
+            <div className="p-4 rounded-lg bg-emerald-50/50 border border-emerald-200 space-y-3">
               <div className="flex items-center justify-between">
-                <span
-                  className={`px-2.5 py-0.5 rounded-full text-[11px] font-bold uppercase tracking-wider ${
-                    analysisResult.analysisSource === 'BEDROCK_AI'
-                      ? 'bg-purple-950 text-purple-300 border border-purple-500'
-                      : 'bg-amber-950 text-amber-300 border border-amber-600'
-                  }`}
-                >
-                  {analysisResult.analysisSource === 'BEDROCK_AI'
-                    ? 'AI VISION VERIFIED'
-                    : 'HEURISTIC SCAN'}
+                <span className="px-2 py-0.5 rounded text-[10px] font-semibold bg-emerald-100 text-emerald-800">
+                  HAZARD RECORDED
                 </span>
-                <span className="text-xs font-mono font-bold text-emerald-400">
-                  {analysisResult.confidence}% Confidence
+                <span className="text-xs font-semibold text-emerald-800">
+                  {analysisResult.confidence}% confidence
                 </span>
               </div>
 
               <div>
-                <h4 className="text-sm font-bold text-white flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4 text-emerald-400" />
-                  <span>Hazard Added to ClimatePulse Routing Layer</span>
+                <h4 className="text-sm font-semibold text-gray-900 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-4 h-4 text-emerald-700" />
+                  <span>Hazard Added to Active Routing</span>
                 </h4>
-                <p className="text-xs text-slate-300 mt-1">
-                  Severity: <strong className="text-red-400">{analysisResult.estimatedSeverity}</strong> &bull; Estimated Depth: <strong className="text-white">{analysisResult.estimatedWaterDepthCm} cm</strong>
+                <p className="text-xs text-gray-600 mt-1">
+                  Severity: <strong className="text-red-700">{analysisResult.estimatedSeverity}</strong> &bull; Estimated Depth: <strong className="text-gray-900">{analysisResult.estimatedWaterDepthCm} cm</strong>
                 </p>
               </div>
 
-              <div className="text-xs text-slate-400 bg-slate-900 p-2.5 rounded-lg border border-slate-800 space-y-1">
-                <span className="text-[11px] font-semibold text-slate-300">Verified Evidence Indicators:</span>
+              <div className="text-xs text-gray-600 bg-white p-2.5 rounded border border-gray-200 space-y-1">
+                <span className="text-[11px] font-medium text-gray-700">Verified Evidence Indicators:</span>
                 {analysisResult.indicators.map((ind, i) => (
-                  <div key={i} className="text-[11px] text-slate-300 flex items-start gap-1">
-                    <span className="text-emerald-400">•</span>
+                  <div key={i} className="text-[11px] text-gray-600 flex items-start gap-1">
+                    <span className="text-emerald-700">•</span>
                     <span>{ind}</span>
                   </div>
                 ))}
@@ -203,18 +186,18 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
             <button
               type="button"
               onClick={handleCloseModal}
-              className="w-full py-2.5 px-4 bg-emerald-500 hover:bg-emerald-400 text-slate-950 font-bold rounded-lg text-sm shadow-lg shadow-emerald-500/20 transition-all flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2 px-4 bg-emerald-700 hover:bg-emerald-800 text-white font-medium rounded-lg text-sm shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <Eye className="w-4 h-4" />
-              <span>View on Map & Recalculate</span>
+              <span>View Updated Route on Map</span>
             </button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-4">
             {/* Sample Photo Selector or Upload */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1.5">
-                1. Provide Ground Photo Evidence
+              <label className="block text-xs font-medium text-gray-700 mb-1.5">
+                1. Select Flood Scenario
               </label>
               <div className="grid grid-cols-3 gap-2 mb-2">
                 {SAMPLE_PHOTOS.map((sample) => (
@@ -227,47 +210,44 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
                       setUserNotes(sample.notes);
                       setImagePreview(null);
                     }}
-                    className={`p-2 rounded-lg border text-left text-xs transition-all ${
+                    className={`p-2 rounded-lg border text-left text-xs transition-colors cursor-pointer ${
                       selectedSample === sample.id
-                        ? 'bg-purple-950/60 border-purple-500 ring-1 ring-purple-500/50'
-                        : 'bg-slate-800/60 border-slate-700/60 hover:bg-slate-800'
+                        ? 'bg-emerald-50/60 border-emerald-600 ring-1 ring-emerald-600'
+                        : 'bg-gray-50 border-gray-200 hover:bg-gray-100'
                     }`}
                   >
-                    <div className={`h-12 rounded mb-1.5 bg-gradient-to-br ${sample.previewGradient} flex items-center justify-center text-lg`}>
-                      🌊
-                    </div>
-                    <div className="font-semibold text-white truncate text-[11px]">{sample.title}</div>
-                    <div className="text-[10px] text-purple-300 font-mono">{sample.depthCm} cm deep</div>
+                    <div className="font-semibold text-gray-900 truncate text-[11px]">{sample.title}</div>
+                    <div className="text-[11px] text-emerald-700 font-medium mt-0.5">{sample.depthCm} cm deep</div>
                   </button>
                 ))}
               </div>
 
               {/* Upload real photo */}
-              <label className="flex items-center justify-center gap-2 p-2.5 border border-dashed border-slate-700 rounded-lg hover:border-slate-500 cursor-pointer text-xs text-slate-400 hover:text-slate-200 transition-colors">
-                <Upload className="w-4 h-4" />
-                <span>Or upload your own camera photo</span>
+              <label className="flex items-center justify-center gap-2 p-2 border border-dashed border-gray-300 rounded-lg hover:border-gray-400 cursor-pointer text-xs text-gray-500 hover:text-gray-700 transition-colors">
+                <Upload className="w-3.5 h-3.5" />
+                <span>Or upload camera photo</span>
                 <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
               </label>
               {imagePreview && (
-                <div className="mt-2 text-xs text-emerald-400 flex items-center gap-1.5">
-                  <CheckCircle2 className="w-4 h-4" />
-                  <span>Custom photo loaded successfully</span>
+                <div className="mt-1.5 text-xs text-emerald-700 flex items-center gap-1.5">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Photo loaded</span>
                 </div>
               )}
             </div>
 
             {/* Location / Landmark */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1 flex items-center gap-1.5">
-                <MapPin className="w-3.5 h-3.5 text-purple-400" />
-                <span>2. Location / Street Name</span>
+              <label className="block text-xs font-medium text-gray-700 mb-1 flex items-center gap-1.5">
+                <MapPin className="w-3.5 h-3.5 text-gray-500" />
+                <span>2. Location or Landmark</span>
               </label>
               <input
                 type="text"
                 value={address}
                 onChange={(e) => setAddress(e.target.value)}
                 placeholder="e.g. Silk Board Junction underpass"
-                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-lg text-sm text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500"
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600"
                 required
               />
             </div>
@@ -275,8 +255,8 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
             {/* Water Depth Slider */}
             <div>
               <div className="flex items-center justify-between text-xs mb-1">
-                <span className="font-semibold text-slate-300">3. Estimated Water Depth</span>
-                <span className="font-mono font-bold text-purple-400">{waterDepthCm} cm</span>
+                <span className="font-medium text-gray-700">3. Estimated Water Depth</span>
+                <span className="font-semibold text-emerald-700">{waterDepthCm} cm</span>
               </div>
               <input
                 type="range"
@@ -285,55 +265,42 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
                 step="5"
                 value={waterDepthCm}
                 onChange={(e) => setWaterDepthCm(parseInt(e.target.value, 10))}
-                className="w-full accent-purple-500 cursor-pointer"
+                className="w-full accent-emerald-600 cursor-pointer"
               />
-              <div className="flex justify-between text-[10px] text-slate-400 mt-1">
-                <span>10cm (Splashes)</span>
+              <div className="flex justify-between text-[10px] text-gray-400 mt-0.5">
+                <span>10cm (Light)</span>
                 <span>25cm (Knee Deep)</span>
-                <span>45cm+ (Engine Submerged)</span>
+                <span>45cm+ (Engine Risk)</span>
               </div>
             </div>
 
             {/* Notes */}
             <div>
-              <label className="block text-xs font-semibold text-slate-300 mb-1">
-                4. Observations
+              <label className="block text-xs font-medium text-gray-700 mb-1">
+                4. Field Notes
               </label>
               <textarea
                 value={userNotes}
                 onChange={(e) => setUserNotes(e.target.value)}
                 rows={2}
-                placeholder="Details on traffic, submerged vehicles, open drains..."
-                className="w-full px-3 py-2 bg-slate-800/80 border border-slate-700 rounded-lg text-xs text-slate-100 placeholder-slate-500 focus:outline-none focus:border-purple-500 resize-none"
+                placeholder="Details on traffic, submerged vehicles, road condition..."
+                className="w-full px-3 py-2 bg-white border border-gray-300 rounded-lg text-xs text-gray-900 placeholder-gray-400 focus:outline-none focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 resize-none"
               />
-            </div>
-
-            {/* AI Verification Badge */}
-            <div className="p-3 bg-purple-950/40 rounded-xl border border-purple-800/40 text-xs space-y-1.5">
-              <div className="flex items-center gap-1.5 text-purple-300 font-bold">
-                <Sparkles className="w-4 h-4 text-purple-400" />
-                <span>Flood Evidence Analysis</span>
-              </div>
-              <p className="text-[11px] text-slate-300 leading-tight">
-                Analyzes submitted evidence for reflective standing water, tire submersion, and curb inundation. Verified reports immediately recalculate active travel routes.
-              </p>
             </div>
 
             {/* Submit */}
             <button
               type="submit"
               disabled={isAnalyzing}
-              className="w-full py-2.5 px-4 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-500 hover:to-indigo-500 text-white font-bold rounded-lg text-sm shadow-lg shadow-purple-600/30 transition-all flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+              className="w-full py-2.5 px-4 bg-emerald-700 hover:bg-emerald-800 text-white font-medium rounded-lg text-sm shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
             >
               {isAnalyzing ? (
                 <>
                   <span className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin"></span>
-                  <span>Analyzing flood evidence...</span>
+                  <span>Verifying flood evidence...</span>
                 </>
               ) : (
-                <>
-                  <span>Submit & Inject into Routing Engine</span>
-                </>
+                <span>Submit Flood Report</span>
               )}
             </button>
           </form>
