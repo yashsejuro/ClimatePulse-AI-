@@ -1,0 +1,6 @@
+{
+  "summary":  "Comprehensive architectural blueprint and MVP implementation plan for ClimatePulse AI ('Fastest isn't always safest') under the 19-hour hackathon constraint. Covers technical stack, minimal AWS architecture, routing & flood risk engine, Bedrock AI integration, deterministic scoring algorithms, fail-safe fallbacks, and a strict numbered build order.",
+  "updatedAt":  "2026-10-10T20:00:38.098990036Z",
+  "requestFeedback":  true,
+  "userFacing":  true
+}

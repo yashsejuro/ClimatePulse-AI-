@@ -1,0 +1,6 @@
+{
+  "name": "ClimatePulse AI",
+  "description": "Climate-aware navigation platform recommending safer routes during flood, waterlogging, and rainfall hazards.",
+  "requestFramePermissions": ["geolocation"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
