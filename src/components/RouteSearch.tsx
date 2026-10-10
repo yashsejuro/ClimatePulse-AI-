@@ -5,7 +5,7 @@ import { VEHICLE_PROFILES } from '../data/seedHazards';
 
 interface RouteSearchProps {
   scenarios: PresetScenario[];
-  activeScenarioId: string;
+  activeScenarioId?: string | null;
   onSelectScenario: (scenario: PresetScenario) => void;
   originText: string;
   destinationText: string;

@@ -394,6 +394,59 @@ export function getPresetCorridorGeometry(
     };
   }
 
+  if (scenarioId === 'chennai-velachery') {
+    // Guindy -> Velachery Main Rd (HAZARD - 48 cm) -> OMR Thoraipakkam
+    const fastest: [number, number][] = [
+      [13.0067, 80.2025], // Guindy Industrial Estate
+      [12.9930, 80.2110], // Checkpost Junction
+      [12.9784, 80.2185], // Velachery Lake Spillway (HAZARD - 48 cm)
+      [12.9640, 80.2280], // Perungudi Link
+      [12.9382, 80.2335]  // OMR Thoraipakkam IT Corridor
+    ];
+
+    // Safe: Guindy -> Saidapet -> Sardar Patel Rd -> Madhya Kailash -> OMR Elevated Expressway
+    const safe: [number, number][] = [
+      [13.0067, 80.2025], // Guindy
+      [13.0150, 80.2200], // Saidapet / Anna Salai
+      [13.0090, 80.2360], // Sardar Patel Rd / IIT Madras
+      [13.0060, 80.2520], // Madhya Kailash Junction
+      [12.9850, 80.2480], // Tidel Park Elevated Corridor
+      [12.9600, 80.2420], // Kandanchavadi OMR
+      [12.9382, 80.2335]  // OMR Thoraipakkam IT Corridor
+    ];
+
+    return {
+      fastestCoords: generateCurvedPath(fastest, 0.0003),
+      safeCoords: generateCurvedPath(safe, 0.0004)
+    };
+  }
+
+  if (scenarioId === 'chennai-madipakkam') {
+    // Alandur -> Madipakkam Bazaar (HAZARD - 38 cm) -> Medavakkam
+    const fastest: [number, number][] = [
+      [13.0034, 80.1982], // Alandur Metro
+      [12.9850, 80.1990], // Vanuvampet
+      [12.9652, 80.1989], // Madipakkam Ram Nagar Lowlands (HAZARD - 38 cm)
+      [12.9450, 80.1940], // Kovilambakkam
+      [12.9208, 80.1915]  // Medavakkam Junction
+    ];
+
+    // Safe: Alandur -> GST Road -> Pallavaram-Thoraipakkam Radial Road Elevated Deck -> Medavakkam Link
+    const safe: [number, number][] = [
+      [13.0034, 80.1982], // Alandur
+      [12.9800, 80.1820], // Meenambakkam GST Rd
+      [12.9620, 80.1750], // Pallavaram Flyover
+      [12.9550, 80.1920], // Radial Road Elevated Deck
+      [12.9400, 80.1980], // Keelkattalai Outer Arc
+      [12.9208, 80.1915]  // Medavakkam Junction
+    ];
+
+    return {
+      fastestCoords: generateCurvedPath(fastest, 0.0003),
+      safeCoords: generateCurvedPath(safe, -0.0004)
+    };
+  }
+
   return null;
 }
 

@@ -31,13 +31,15 @@ export default function App() {
 
   // Scenario & Input State
   const cityScenarios = PRESET_SCENARIOS.filter((s) => s.city === currentCity);
-  const [activeScenario, setActiveScenario] = useState<PresetScenario>(
-    cityScenarios[0] || PRESET_SCENARIOS[0]
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(
+    cityScenarios[0]?.id || null
   );
-  const [originText, setOriginText] = useState(activeScenario.origin.name);
-  const [destinationText, setDestinationText] = useState(activeScenario.destination.name);
-  const [originCoords, setOriginCoords] = useState<[number, number]>(activeScenario.origin.coords);
-  const [destCoords, setDestCoords] = useState<[number, number]>(activeScenario.destination.coords);
+
+  const initialPreset = cityScenarios[0] || PRESET_SCENARIOS[0];
+  const [originText, setOriginText] = useState(initialPreset.origin.name);
+  const [destinationText, setDestinationText] = useState(initialPreset.destination.name);
+  const [originCoords, setOriginCoords] = useState<[number, number]>(initialPreset.origin.coords);
+  const [destCoords, setDestCoords] = useState<[number, number]>(initialPreset.destination.coords);
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>('sedan');
 
   // Evaluation & Route State
@@ -59,18 +61,23 @@ export default function App() {
   const [showHazards, setShowHazards] = useState(true);
   const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('dark');
 
-  // Load weather and hazards when city changes
+  // Load weather, hazards and scenarios when city changes
   useEffect(() => {
     const defaultW = INITIAL_WEATHER[currentCity] || INITIAL_WEATHER.bengaluru;
     setWeather(defaultW);
 
     const filteredScenarios = PRESET_SCENARIOS.filter((s) => s.city === currentCity);
-    const newScenario = filteredScenarios[0] || PRESET_SCENARIOS[0];
-    setActiveScenario(newScenario);
-    setOriginText(newScenario.origin.name);
-    setDestinationText(newScenario.destination.name);
-    setOriginCoords(newScenario.origin.coords);
-    setDestCoords(newScenario.destination.coords);
+    const newScenario = filteredScenarios[0] || null;
+
+    if (newScenario) {
+      setActiveScenarioId(newScenario.id);
+      setOriginText(newScenario.origin.name);
+      setDestinationText(newScenario.destination.name);
+      setOriginCoords(newScenario.origin.coords);
+      setDestCoords(newScenario.destination.coords);
+    } else {
+      setActiveScenarioId(null);
+    }
 
     // Fetch from backend API with fallback
     fetch(`/api/weather?city=${currentCity}`)
@@ -98,12 +105,19 @@ export default function App() {
   }, [currentCity]);
 
   // Recalculate routes whenever coords, vehicle, hazards, or scenario changes
-  const runRouteCalculation = async (scenarioToRun?: PresetScenario) => {
+  const runRouteCalculation = async (override?: {
+    origin?: [number, number];
+    dest?: [number, number];
+    scenarioId?: string;
+  }) => {
     setIsLoading(true);
     setIsSimulating(false);
     setSimulationPosition(null);
 
-    const scenario = scenarioToRun || activeScenario;
+    const origin = override?.origin || originCoords;
+    const dest = override?.dest || destCoords;
+    const scenarioId = override?.scenarioId !== undefined ? override.scenarioId : (activeScenarioId || undefined);
+
     const vehicle = VEHICLE_PROFILES.find((v) => v.id === selectedVehicle) || VEHICLE_PROFILES[0];
 
     try {
@@ -114,10 +128,10 @@ export default function App() {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            origin: originCoords,
-            destination: destCoords,
+            origin,
+            destination: dest,
             vehicleId: selectedVehicle,
-            scenarioId: scenario?.id,
+            scenarioId,
             city: currentCity
           })
         });
@@ -131,19 +145,19 @@ export default function App() {
       // 2. Client-side fallback if server is unreachable
       if (!result) {
         result = await calculateDualRoutes(
-          originCoords,
-          destCoords,
+          origin,
+          dest,
           hazards,
           vehicle,
           weather.rainfallMmPerHour,
-          scenario?.id
+          scenarioId
         );
       }
 
       setComparison(result);
       setSelectedRouteType('SAFE');
 
-      // 3. Request AI safety briefing
+      // 3. Request safety briefing
       if (result.fastest.hazardsIntersected.length > 0) {
         setIsLoadingBriefing(true);
         fetch('/api/ai-briefing', {
@@ -174,27 +188,46 @@ export default function App() {
     }
   };
 
-  // Initial calculation once scenario is set
+  // Initial calculation once scenario / city is set
   useEffect(() => {
     runRouteCalculation();
-  }, [activeScenario.id, selectedVehicle, currentCity]);
+  }, [currentCity, selectedVehicle]);
 
   // Handle Scenario Selection
   const handleSelectScenario = (scenario: PresetScenario) => {
-    setActiveScenario(scenario);
+    setActiveScenarioId(scenario.id);
     setOriginText(scenario.origin.name);
     setDestinationText(scenario.destination.name);
     setOriginCoords(scenario.origin.coords);
     setDestCoords(scenario.destination.coords);
-    runRouteCalculation(scenario);
+    runRouteCalculation({
+      origin: scenario.origin.coords,
+      dest: scenario.destination.coords,
+      scenarioId: scenario.id
+    });
   };
 
   // Handle Map Click to set custom point
   const handleMapClick = (coords: [number, number]) => {
-    // If user clicks, update destination or origin
+    setActiveScenarioId(null); // Clear preset lock!
     setDestCoords(coords);
-    setDestinationText(`Pinned Coordinate (${coords[0].toFixed(4)}, ${coords[1].toFixed(4)})`);
-    runRouteCalculation();
+    setDestinationText(`Pinned Location (${coords[0].toFixed(4)}, ${coords[1].toFixed(4)})`);
+    runRouteCalculation({
+      origin: originCoords,
+      dest: coords,
+      scenarioId: undefined // Enforce dynamic route calculation!
+    });
+  };
+
+  // Handle text input changes
+  const handleChangeOrigin = (val: string) => {
+    setActiveScenarioId(null); // Clear preset lock!
+    setOriginText(val);
+  };
+
+  const handleChangeDestination = (val: string) => {
+    setActiveScenarioId(null); // Clear preset lock!
+    setDestinationText(val);
   };
 
   // Drive Simulation Loop
@@ -233,7 +266,7 @@ export default function App() {
     };
   }, [isSimulating, selectedRouteType]);
 
-  // Handle Citizen Report Submission
+  // Handle Citizen Report Submission with live validation feedback
   const handleSubmitReport = async (reportData: {
     city: CityId;
     location: [number, number];
@@ -249,13 +282,15 @@ export default function App() {
         body: JSON.stringify(reportData)
       });
 
+      let responseData: any = null;
+
       if (response.ok) {
-        const data = await response.json();
-        if (data.hazard) {
-          setHazards((prev) => [data.hazard, ...prev]);
+        responseData = await response.json();
+        if (responseData.hazard) {
+          setHazards((prev) => [responseData.hazard, ...prev]);
         }
-        if (data.report) {
-          setCitizenReports((prev) => [data.report, ...prev]);
+        if (responseData.report) {
+          setCitizenReports((prev) => [responseData.report, ...prev]);
         }
       } else {
         // Fallback local injection
@@ -276,14 +311,39 @@ export default function App() {
           notes: reportData.userNotes
         };
         setHazards((prev) => [newHazard, ...prev]);
+
+        responseData = {
+          success: true,
+          validation: {
+            isFlooded: true,
+            confidence: 89,
+            estimatedSeverity: newHazard.severity,
+            estimatedWaterDepthCm: reportData.waterDepthCm,
+            indicators: ['Surface ponding reported by citizen submission'],
+            analysisSource: 'FALLBACK_HEURISTIC'
+          }
+        };
       }
 
-      // Recalculate routes with new hazard added!
+      // Dynamically recalculate routes factoring in new hazard
       setTimeout(() => {
         runRouteCalculation();
-      }, 300);
+      }, 250);
+
+      return responseData;
     } catch {
       runRouteCalculation();
+      return {
+        success: true,
+        validation: {
+          isFlooded: true,
+          confidence: 85,
+          estimatedSeverity: 'HIGH',
+          estimatedWaterDepthCm: reportData.waterDepthCm,
+          indicators: ['Citizen verified ponding record'],
+          analysisSource: 'FALLBACK_HEURISTIC'
+        }
+      };
     }
   };
 
@@ -336,7 +396,7 @@ export default function App() {
             <div className="flex items-center gap-2">
               <button
                 onClick={() => setMapTileTheme((t) => (t === 'dark' ? 'streets' : 'dark'))}
-                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 transition-colors"
+                className="px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-[11px] text-slate-300 transition-colors cursor-pointer"
               >
                 {mapTileTheme === 'dark' ? '🌙 Dark Mode Tiles' : '☀️ Light Tiles'}
               </button>
@@ -384,7 +444,7 @@ export default function App() {
                 </div>
                 <button
                   onClick={() => setIsSimulating(false)}
-                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white font-medium"
+                  className="px-2.5 py-1 rounded bg-slate-800 hover:bg-slate-700 text-white font-medium cursor-pointer"
                 >
                   Exit HUD
                 </button>
@@ -398,15 +458,21 @@ export default function App() {
           {/* Route Search & Scenario Selector */}
           <RouteSearch
             scenarios={cityScenarios}
-            activeScenarioId={activeScenario.id}
+            activeScenarioId={activeScenarioId}
             onSelectScenario={handleSelectScenario}
             originText={originText}
             destinationText={destinationText}
-            onChangeOrigin={setOriginText}
-            onChangeDestination={setDestinationText}
+            onChangeOrigin={handleChangeOrigin}
+            onChangeDestination={handleChangeDestination}
             selectedVehicle={selectedVehicle}
             onSelectVehicle={setSelectedVehicle}
-            onCalculate={() => runRouteCalculation()}
+            onCalculate={() =>
+              runRouteCalculation({
+                origin: originCoords,
+                dest: destCoords,
+                scenarioId: activeScenarioId || undefined
+              })
+            }
             isLoading={isLoading}
           />
 

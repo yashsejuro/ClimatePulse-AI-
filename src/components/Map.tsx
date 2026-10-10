@@ -82,14 +82,15 @@ export const Map: React.FC<MapProps> = ({
       map.removeLayer(tileLayerRef.current);
     }
 
-    const tileUrl =
-      mapTileTheme === 'dark'
-        ? 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png'
-        : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png';
+    // High-resolution reliable tile endpoints without watermarks or blocking
+    const darkTileUrl = 'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
+    const lightTileUrl = 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
+    
+    const tileUrl = mapTileTheme === 'dark' ? darkTileUrl : lightTileUrl;
 
     const tile = L.tileLayer(tileUrl, {
-      attribution: '&copy; CartoDB &copy; OpenStreetMap contributors',
-      maxZoom: 19
+      attribution: 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ',
+      maxZoom: 18
     }).addTo(map);
 
     tileLayerRef.current = tile;
@@ -161,7 +162,7 @@ export const Map: React.FC<MapProps> = ({
           </div>
           <div class="flex items-center justify-between text-[11px] text-slate-400 pt-1 border-t border-slate-800">
             <span>🌧️ Rain: ${hazard.rainfallIntensityMmPerHour} mm/h</span>
-            <span class="text-emerald-400 font-medium">✓ Sensor Verified</span>
+            <span class="text-emerald-400 font-medium">VERIFIED HOTSPOT</span>
           </div>
         </div>
       `;

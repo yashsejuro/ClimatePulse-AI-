@@ -1,320 +1,361 @@
-# ClimatePulse AI — Architectural Blueprint & MVP Execution Plan
+# ClimatePulse AI — Lean Hackathon Architecture & MVP Specification
 **Tagline:** *"Fastest isn't always safest."*  
-**Hackathon Track:** AWS Bharat Builds Tour / Environmental Hacks — Heat & Water  
-**Time Horizon:** ~19 Hours Remaining to Final Submission
+**Hackathon Target:** AWS Bharat Builds / Environmental Hacks — Water & Climate  
+**Optimization Principle:** Aggressive 18-hour scope pruning: Zero DEM, deterministic spatial algorithms in Lambda memory, DynamoDB as a flat key-value registry, modular external adapters with zero-fail mocks, and Bedrock restricted strictly to vision validation & human explanations.
 
 ---
 
-## User Review & Critical Decisions
-
-> [!IMPORTANT]
-> **Key Hackathon Alignment:**
-> To guarantee a flawless live demo and judge evaluation within 19 hours, we adopt a **Deterministic Routing & Risk Engine** with **Dual-Source Fallback**. 
-> - **External APIs:** OSRM (Open Source Routing Machine) + Open-Meteo Rain API for real-time live data.
-> - **Zero-Failure Fallback:** Curated high-risk monsoon corridors (Bengaluru Silk Board/Bellandur, Mumbai Hindmata/Milan Subway, Chennai Velachery) with active flood hazard zones so that if external networks or rate limits choke during the live pitch, the app gracefully demonstrates full dynamic recalculation without failing.
-> - **AWS Footprint:** AWS Lambda + API Gateway contract with DynamoDB persistence and Amazon Bedrock (or multimodal fallback) for vision verification of citizen hazard reports.
-
----
-
-## 1. Final MVP Definition
-
-ClimatePulse AI delivers an environmental safety layer over conventional navigation:
-
-1. **Dual Route Calculation:**
-   - **Fastest Route (Standard Baseline):** Optimizes strictly for distance/traffic, which often directs vehicles straight through submerged underpasses, low-lying storm channels, or waterlogged arterial roads.
-   - **Safe Route (ClimatePulse):** Actively avoids detected waterlogging zones, high-intensity precipitation basins, and citizen-verified flood hazards by dynamically penalizing hazardous segments and calculating waypoints around hazard polygons.
-2. **Comparative Risk & Cost Metrics:**
-   - **Composite Risk Score (0–100):** Visual breakdown comparing Fastest Route risk (e.g., 78% High Risk) vs. ClimatePulse Route risk (e.g., 18% Low Risk).
-   - **Trade-off Clarity:** Explicit delta display (e.g., `+4.2 km`, `+7 min`, `Avoided 3 severe waterlogging hotspots`).
-3. **Interactive Hazard Layer:**
-   - Visualizing active flood polygons, rainfall intensity heatmaps, and citizen report markers with depth estimates (e.g., "1.5 ft waterlogging reported at Minto Bridge").
-4. **Secondary Feature: Citizen Hazard Reporting & AI Vision Verification:**
-   - Users submit a waterlogging photo with location tag.
-   - AI evaluates visible flood indicators (submerged curbs, tire water levels, standing water reflections), assigns a verification confidence score (0–100%), and if confirmed, immediately injects the hazard into the routing engine.
-
----
-
-## 2. Recommended Technology Stack
-
-| Layer | Technology | Rationale & Trade-offs |
-| :--- | :--- | :--- |
-| **Frontend** | React 19 + TypeScript + Vite | Instant dev reload, strong type safety, robust ecosystem. |
-| **Styling** | Tailwind CSS v4 + Lucide Icons | Tactical, high-contrast cartographic aesthetic with zero bloat. |
-| **Map Rendering** | Leaflet.js (`leaflet`, `@types/leaflet`) | Lightweight, rock-solid performance, zero API key required, crisp CartoDB dark/light tiles. |
-| **Fullstack Backend** | Node.js / Express (`server.ts`) mirroring AWS Lambda | Bridges the dev environment and AWS Lambda serverless handler (`aws-serverless-express` compatible). |
-| **Routing Engine** | OSRM Public API + Custom Multi-Waypoint Path Avoidance | Free, zero API key, returns full GeoJSON coordinates; backed by pre-computed offline graph corridors. |
-| **Weather & Rainfall** | Open-Meteo API | Free, open meteorological API providing real-time mm/h precipitation with no API key requirement. |
-| **Cloud & AWS** | AWS Lambda / API Gateway / DynamoDB / Bedrock | Serverless architecture meeting AWS Bharat hackathon criteria. |
-| **AI Vision & Reasoner**| Amazon Bedrock (Claude 3 Haiku / Titan Vision) + Server-side proxy | Fast multimodal validation of flood images and natural-language risk summary. |
-
----
-
-## 3. Minimal AWS Architecture
+## A. Final MVP Architecture
 
 ```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                             CLIENT (React SPA)                              │
-│         Leaflet Map  •  Route Comparison Card  •  Hazard Report Modal       │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │ HTTPS / JSON
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                           AMAZON API GATEWAY                                │
-│               REST API Routes: /api/route, /api/hazards, /api/report         │
-└──────────────────────────────────────┬──────────────────────────────────────┘
-                                       │ Lambda Proxy Event
-                                       ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                               AWS LAMBDA                                    │
-│                 (ClimatePulse Core Engine / Express Adapter)                │
-│                                                                             │
-│   ┌────────────────────┐   ┌────────────────────┐   ┌───────────────────┐   │
-│   │   Routing Engine   │   │  Risk Evaluation   │   │  Hazard Registry  │   │
-│   │   (OSRM + BBox)    │   │  (Rainfall + DEM)  │   │   (CRUD & Spatial)│   │
-│   └─────────┬──────────┘   └─────────┬──────────┘   └─────────┬─────────┘   │
-└─────────────┼────────────────────────┼────────────────────────┼─────────────┘
-              │                        │                        │
-     ┌────────┴────────┐      ┌────────┴────────┐      ┌────────┴────────┐
-     │  Open-Meteo &   │      │ Amazon Bedrock  │      │ Amazon DynamoDB │
-     │  OSRM Services  │      │ (Vision & Risk) │      │ (Hazards & Logs)│
-     └─────────────────┘      └─────────────────┘      └─────────────────┘
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                           CLIENT: React 19 SPA (Vite)                           │
+│     Leaflet Map Layer  •  Route Risk Comparison Card  •  Citizen Report Flow    │
+└────────────────────────────────────────┬────────────────────────────────────────┘
+                                         │ HTTPS / JSON
+                                         ▼
+┌─────────────────────────────────────────────────────────────────────────────────┐
+│                              AMAZON API GATEWAY                                 │
+│         POST /route          GET /hazards          POST /reports/verify         │
+└──────────────┬─────────────────────┬───────────────────────────┬────────────────┘
+               │                     │                           │
+               ▼                     ▼                           ▼
+┌───────────────────────────┐ ┌───────────────────────────┐ ┌────────────────────┐
+│   Route & Risk Lambda     │ │   Hazard Ingestion Lambda │ │ Bedrock Validator  │
+│  (RoutingProvider + BBox  │ │ (Query DynamoDB by cityId │ │ (Claude 3 Haiku /  │
+│   In-Memory Intersection) │ │  + In-memory filter)      │ │  Titan Multimodal) │
+└──────────────┬────────────┘ └──────────────┬────────────┘ └─────────┬──────────┘
+               │                             │                        │
+       ┌───────┴───────┐                     ▼                        │
+       ▼               ▼            ┌─────────────────┐               │
+┌─────────────┐ ┌─────────────┐     │ Amazon DynamoDB │               │
+│ OSRM Client │ │ Open-Meteo  │     │ (HazardRegistry │◄──────────────┘
+│ (or Mock)   │ │ (or Mock)   │     │  & Reports)     │ (writes verified reports)
+└─────────────┘ └─────────────┘     └─────────────────┘
 ```
 
-### AWS Ingestion & Scheduling (Minimal Hackathon Scope):
-- **EventBridge Rule (Cron):** Triggers `IngestWeatherHazardLambda` hourly to query regional weather alerts.
-- **DynamoDB Tables:**
-  - `ClimatePulse-Hazards`: Partition key `cityId`, Sort key `hazardId`. Stores GeoJSON polygons, severity level, source (Sensor / Citizen / Meteorological).
-  - `ClimatePulse-Reports`: Stores raw submissions and Bedrock analysis verdicts.
+### Architectural Reductions:
+1. **DEM Dropped:** No raster elevation grids, contour interpolation, or hydrological basin modeling. Risk relies purely on rainfall nowcast, known historical hazard points, and real-time citizen reports.
+2. **Native Lambda Handlers:** Pure AWS Lambda handler functions (`exports.handler = async (event) => ...`) replacing all Express middleware bridges.
+3. **Application-Space Spatial Analysis:** DynamoDB performs zero GIS/spatial indexing. Lambda loads candidate hazards for the active city/bounding box into memory and calculates point-to-polyline Euclidean/Haversine distances in milliseconds.
+4. **Secondary Status for EventBridge:** EventBridge cron triggers are deferred until core routing and reporting pass live demonstration tests.
 
 ---
 
-## 4. Frontend Architecture & Component Hierarchy
+## B. Data Model
 
+### 1. DynamoDB Table: `ClimatePulse-Hazards`
+- **Partition Key (`PK`):** `CITY#<cityId>` (e.g., `CITY#bengaluru`)
+- **Sort Key (`SK`):** `HAZARD#<hazardId>` (e.g., `HAZARD#hz-silkboard-01`)
+- **Attributes:**
+  - `hazardId` (string, UUID or slug)
+  - `name` (string, e.g., "Silk Board Junction Underpass")
+  - `latitude` (number, e.g., `12.9177`)
+  - `longitude` (number, e.g., `77.6238`)
+  - `radiusMeters` (number, e.g., `450`)
+  - `hazardType` (string: `'UNDERPASS_FLOOD'` | `'LAKE_OVERFLOW'` | `'ROAD_PONDING'` | `'OPEN_DRAIN'`)
+  - `severity` (string: `'CRITICAL'` | `'HIGH'` | `'MODERATE'` | `'LOW'`)
+  - `waterDepthCm` (number, e.g., `48`)
+  - `confidence` (number: `0.0` to `1.0`)
+  - `source` (string: `'OFFICIAL_SENSOR'` | `'CITIZEN_REPORT'` | `'HISTORICAL_MONSOON'`)
+  - `timestamp` (string, ISO-8601)
+  - `status` (string: `'ACTIVE'` | `'RESOLVED'` | `'MONITORING'`)
+  - `verified` (boolean)
+
+### 2. DynamoDB Table: `ClimatePulse-Reports`
+- **Partition Key (`PK`):** `REPORT#<reportId>`
+- **Sort Key (`SK`):** `<timestamp>`
+- **Attributes:**
+  - `reportId` (string)
+  - `cityId` (string)
+  - `latitude` (number)
+  - `longitude` (number)
+  - `s3ImageKey` (string, optional)
+  - `bedrockVerification`:
+    - `hasFloodEvidence` (boolean)
+    - `confidenceScore` (number: `0` to `100`)
+    - `estimatedDepthCategory` (`'SPLASH'` | `'ANKLE_DEEP'` | `'KNEE_DEEP'` | `'VEHICLE_SUBMERGED'`)
+    - `indicators` (list of strings)
+    - `reasoning` (string)
+  - `userComment` (string)
+  - `status` (`'VERIFIED'` | `'REJECTED'`)
+  - `createdAt` (string, ISO-8601)
+
+---
+
+## C. API Contract
+
+### 1. `POST /api/route`
+Calculates standard fastest path and ClimatePulse safe path.
+
+**Request Body:**
+```json
+{
+  "cityId": "bengaluru",
+  "origin": { "lat": 12.9345, "lon": 77.6266 },
+  "destination": { "lat": 12.8452, "lon": 77.6602 },
+  "vehicleClearanceCm": 16
+}
 ```
-┌──────────────────────────────────────────────────────────────────────────────┐
-│ App.tsx (Root State: origin, destination, routes, activeHazards, selectedTab)│
-├──────────────────────────────────────────────────────────────────────────────┤
-│ ├── Navbar (Logo, City Selector: Bengaluru / Mumbai / Delhi, Live Storm Alert)│
-│ ├── Main Viewport (Split Layout: 60% Map Canvas | 40% Drawer / Side Panel)   │
-│ │   ├── MapContainer (Leaflet Engine)                                        │
-│ │   │   ├── RoutePolyline (Fastest - Red/Dashed when compromised)            │
-│ │   │   ├── RoutePolyline (Safe Alternative - Bright Emerald/Teal Solid)     │
-│ │   │   ├── HazardPolygons (Waterlogging heat circles / danger zones)        │
-│ │   │   └── CitizenReportMarkers (Pulsing orange pin with popup photos)      │
-│ │   └── ControlPanel (Collapsible on Mobile)                                 │
-│ │       ├── RouteInputWidget (Origin/Destination inputs, Quick Pre-sets)     │
-│ │       ├── RouteComparisonCard (Fastest vs Safe: Time, Distance, Risk Score)│
-│ │       ├── ClimateRiskAuditCard (Why safer? Inundation depths, rain rates)  │
-│ │       └── QuickReportTrigger ("Report Waterlogging" FAB button)            │
-│ └── Modals                                                                   │
-│     ├── CitizenReportModal (Photo upload, preview, GPS pin, Bedrock verdict) │
-│     └── HazardDetailsModal (Depth, historical flood recurrence, live camera) │
-└──────────────────────────────────────────────────────────────────────────────┘
+
+**Response Body:**
+```json
+{
+  "fastestRoute": {
+    "distanceKm": 14.2,
+    "durationMinutes": 26,
+    "riskScore": 82,
+    "riskCategory": "HAZARDOUS",
+    "coordinates": [[12.9345, 77.6266], [12.9177, 77.6238], [12.8452, 77.6602]],
+    "intersectedHazards": [
+      {
+        "hazardId": "hz-silkboard-01",
+        "name": "Silk Board Junction Underpass",
+        "severity": "CRITICAL",
+        "waterDepthCm": 48
+      }
+    ]
+  },
+  "safeRoute": {
+    "distanceKm": 16.5,
+    "durationMinutes": 32,
+    "riskScore": 14,
+    "riskCategory": "SAFE",
+    "coordinates": [[12.9345, 77.6266], [12.9140, 77.6080], [12.8452, 77.6602]],
+    "intersectedHazards": []
+  },
+  "tradeOff": {
+    "timeDeltaMinutes": 6,
+    "distanceDeltaKm": 2.3,
+    "riskReductionPercent": 83,
+    "avoidedHazardsCount": 1
+  },
+  "bedrockSafetyExplanation": "Fastest route passes through 48 cm water at Silk Board Underpass, which exceeds vehicle ground clearance (16 cm) and risks engine hydrostatic lock. The safe alternative bypasses via BTM elevated corridor with only 6 minutes added travel time."
+}
+```
+
+### 2. `GET /api/hazards?cityId=bengaluru`
+Returns active hazards for map overlay.
+
+**Response Body:**
+```json
+{
+  "cityId": "bengaluru",
+  "hazards": [
+    {
+      "hazardId": "hz-silkboard-01",
+      "name": "Silk Board Junction Underpass",
+      "latitude": 12.9177,
+      "longitude": 77.6238,
+      "radiusMeters": 450,
+      "severity": "CRITICAL",
+      "waterDepthCm": 48,
+      "source": "OFFICIAL_SENSOR",
+      "status": "ACTIVE"
+    }
+  ]
+}
+```
+
+### 3. `POST /api/reports/verify`
+Submits citizen hazard photo for Bedrock multimodal analysis and injects verified hazards.
+
+**Request Body:**
+```json
+{
+  "cityId": "bengaluru",
+  "latitude": 12.9298,
+  "longitude": 77.6745,
+  "userComment": "Bellandur spillway overflowing across service road.",
+  "imageBase64": "data:image/jpeg;base64,..."
+}
+```
+
+**Response Body:**
+```json
+{
+  "reportId": "rep-9812",
+  "verified": true,
+  "bedrockAnalysis": {
+    "hasFloodEvidence": true,
+    "confidenceScore": 94,
+    "estimatedDepthCategory": "KNEE_DEEP",
+    "estimatedDepthCm": 36,
+    "indicators": ["Submerged road curb", "Standing surface ripples across two lanes"]
+  },
+  "newHazardCreated": {
+    "hazardId": "hz-citizen-rep-9812",
+    "radiusMeters": 350,
+    "severity": "HIGH"
+  }
+}
 ```
 
 ---
 
-## 5. Backend Architecture & Express-to-Lambda Bridge
+## D. Route-Risk Algorithm (Deterministic)
 
-The local dev environment runs Express (`server.ts`) which exports the exact handler pattern required by `serverless-http` / AWS Lambda:
+We compute risk using a deterministic formula evaluated strictly in application code.
 
-1. `server.ts` mounts:
-   - `POST /api/route`: Takes `{ origin: [lat, lon], destination: [lat, lon], mode: 'driving' }`.
-   - `GET /api/hazards`: Returns active hazard bounding boxes, rainfall intensity, and citizen reports in the current bounding box.
-   - `POST /api/report`: Accepts multipart/base64 image, lat, lon, user comment. Calls Bedrock for vision validation; persists to DynamoDB/memory store.
-   - `GET /api/weather`: Proxies Open-Meteo precipitation data with 15-minute server-side caching to avoid rate limits.
+### 1. Variables:
+- $w_{\text{depth}}$: Water depth normalized against vehicle ground clearance $C_v$ (cm):
+  $$\text{DepthRatio} = \frac{\text{waterDepthCm}}{\max(10, C_v)}$$
+  $$\text{DepthScore} = \min(45, \text{DepthRatio} \times 30)$$
+- $w_{\text{rain}}$: Regional rainfall intensity $R$ (mm/h) from Open-Meteo nowcast:
+  $$\text{RainScore} = \min(25, \frac{R}{50} \times 20)$$
+- $w_{\text{sev}}$: Hazard severity base weight:
+  - `CRITICAL`: 35
+  - `HIGH`: 25
+  - `MODERATE`: 15
+  - `LOW`: 8
+- $f_{\text{recency}}$: Time decay factor based on report age $t$ (hours):
+  $$f_{\text{recency}} = \max(0.6, 1.0 - (t \times 0.05))$$
+- $f_{\text{conf}}$: Source verification confidence ($0.5$ to $1.0$).
+
+### 2. Segment Hazard Risk:
+$$\text{HazardRisk}(h) = \left[ \text{DepthScore} + \text{RainScore} + w_{\text{sev}} \right] \times f_{\text{recency}} \times f_{\text{conf}}$$
+
+### 3. Route Composite Risk Index (CRI: 0 – 100):
+$$\text{CRI} = \min\left(100, \text{BaseRainRisk} + \sum_{h \in \text{Intersected}} \text{HazardRisk}(h)\right)$$
+Where:
+- $\text{BaseRainRisk} = \min(15, \frac{R}{50} \times 12)$
+- If 0 hazards intersected: $\text{CRI} = \text{BaseRainRisk}$ (Safe, Category `SAFE`)
+- Category thresholds:
+  - $0 \le \text{CRI} < 30$: **SAFE**
+  - $30 \le \text{CRI} < 65$: **CAUTION**
+  - $65 \le \text{CRI} \le 100$: **HAZARDOUS**
 
 ---
 
-## 6. Data Model
+## E. Hazard Intersection Algorithm (In-Memory Spatial)
 
-### A. Hazard Entity (`HazardZone`)
+No database spatial query required. Executed in-memory inside the Lambda handler.
+
+### Step 1: Bounding Box Pre-Filter
+Given route coordinates $\mathcal{P} = [(lat_1, lon_1), \dots, (lat_n, lon_n)]$:
+1. Compute Bounding Box:
+   $$lat_{\min} = \min_i(lat_i) - \Delta, \quad lat_{\max} = \max_i(lat_i) + \Delta$$
+   $$lon_{\min} = \min_i(lon_i) - \Delta, \quad lon_{\max} = \max_i(lon_i) + \Delta$$
+   (with safety buffer $\Delta = 0.015^{\circ} \approx 1.6\text{ km}$).
+2. Filter candidate hazards from DynamoDB memory list where $(lat_h, lon_h) \in \text{BBox}$.
+
+### Step 2: Point-to-Segment Minimum Distance
+For each candidate hazard $H(lat_h, lon_h)$ and for every consecutive segment $S_j = (P_j, P_{j+1})$ along the route polyline:
+1. Project $H$ onto line segment $P_j P_{j+1}$ using planar metric projection:
+   $$x = \Delta lon \cdot \cos(lat) \cdot 111320, \quad y = \Delta lat \cdot 110540$$
+2. Compute scalar projection parameter $t = \text{clamp}\left(\frac{\vec{HP_j} \cdot \vec{P_{j+1}P_j}}{\|\vec{P_{j+1}P_j}\|^2}, 0, 1\right)$.
+3. Compute perpendicular distance $d_j = \| \text{proj} - H \|$ in meters.
+4. $d_{\min}(H, \mathcal{P}) = \min_j(d_j)$.
+
+### Step 3: Intersection Verdict
+If $d_{\min}(H, \mathcal{P}) \le \text{radiusMeters}_H \times 1.15$ (with 15% safety buffer), hazard $H$ is marked as **INTERSECTED**.
+
+### Step 4: Deterministic Alternative Path Generation
+1. If fastest route has 0 intersections $\to$ Fastest route is optimal.
+2. If fastest route intersects hazard $H$:
+   - Calculate normal detour vector perpendicular to the origin-destination corridor at hazard $H$:
+     $$\vec{v}_{\text{bypass}} = (lat_h, lon_h) \pm \vec{n} \times (\text{radius}_H \times 2.4)$$
+   - Request routing provider for path: `Origin` $\to$ `Bypass Waypoint` $\to$ `Destination`.
+   - Re-evaluate intersection on alternative route.
+   - If alternative avoids hazard $\to$ return as **Safe Route**.
+
+---
+
+## F. Amazon Bedrock Responsibilities (Targeted AI)
+
+Bedrock is strictly isolated to tasks where LLMs and Multimodal Foundation Models provide distinct value:
+
+1. **Citizen Flood Image Verification (Multimodal Claude 3 Haiku / Titan Multimodal):**
+   - **Input:** Citizen-submitted JPEG/PNG base64 + timestamp.
+   - **System Prompt:** Analyzes photo strictly for:
+     1. Surface standing water or runoff on asphalt.
+     2. Reflection of streetlights/sky on road surface.
+     3. Submersion relative to vehicle tires, hubcaps, or sidewalk curbs.
+   - **Structured JSON Output:**
+     - `hasFloodEvidence`: boolean
+     - `confidenceScore`: 0–100
+     - `estimatedDepthCategory`: `'SPLASH'` | `'ANKLE_DEEP'` | `'KNEE_DEEP'` | `'VEHICLE_SUBMERGED'`
+     - `indicators`: short evidence list
+2. **Natural-Language Driver Risk Briefing:**
+   - **Input:** Names and depths of intersected hazards, vehicle clearance, time delta, distance delta.
+   - **Output:** Exactly 2 concise, driver-focused sentences explaining why the safe detour is strongly recommended (e.g., *"Fastest route leads through 48 cm standing water at Silk Board underpass, exceeding your vehicle's 16 cm clearance. ClimatePulse routes via BTM elevated corridor: +6 mins travel time, 83% risk reduction."*).
+3. **Strict Boundary:** Bedrock does **NOT** compute coordinates, does **NOT** determine route intersections, and does **NOT** calculate risk scores.
+
+---
+
+## G. External API Dependencies & Interfaces
+
+### 1. `RoutingProvider` Interface
+Abstracted so OSRM can be swapped or mocked seamlessly:
 ```typescript
-interface HazardZone {
-  id: string;
-  city: 'bengaluru' | 'mumbai' | 'delhi' | 'chennai';
-  name: string; // e.g., "Silk Board Junction Underpass"
-  center: [number, number]; // [lat, lon]
-  radiusMeters: number; // e.g., 400
-  severity: 'CRITICAL' | 'HIGH' | 'MODERATE' | 'LOW';
-  waterDepthCm: number; // e.g., 45
-  rainfallIntensityMmPerHour: number; // e.g., 38.5
-  riskWeight: number; // 0.0 to 1.0 multiplier
-  source: 'OFFICIAL_SENSOR' | 'CITIZEN_REPORT' | 'SATELLITE_NOWCAST';
-  verified: boolean;
-  reportedAt: string; // ISO-8601
-  polygonGeoJSON?: GeoJSON.Polygon;
+interface RoutingProvider {
+  getRoute(
+    waypoints: [number, number][],
+    alternatives?: boolean
+  ): Promise<{ coordinates: [number, number][]; distanceKm: number; durationMinutes: number } | null>;
 }
 ```
+- **Primary:** OSRM Public API (`https://router.project-osrm.org/route/v1/driving/...`).
+- **Timeout:** 3.5 seconds with `AbortSignal`.
 
-### B. Route Comparison Entity (`RouteComparisonResponse`)
+### 2. `WeatherProvider` Interface
 ```typescript
-interface RouteOption {
-  type: 'FASTEST' | 'SAFE';
-  distanceKm: number;
-  durationMinutes: number;
-  riskScore: number; // 0 - 100
-  riskCategory: 'SAFE' | 'CAUTION' | 'HAZARDOUS';
-  coordinates: [number, number][]; // GeoJSON polyline [lat, lon]
-  hazardsIntersected: {
-    hazardId: string;
-    name: string;
-    severity: string;
-    waterDepthCm: number;
-  }[];
-  explanation: string;
-}
-
-interface RouteComparisonResponse {
-  fastest: RouteOption;
-  safe: RouteOption;
-  riskDeltaPercent: number; // e.g., -68%
-  timeDeltaMinutes: number; // e.g., +6
-  summary: string;
+interface WeatherProvider {
+  getRainfall(lat: number, lon: number): Promise<{ rainfallMmPerHour: number; tempC: number }>;
 }
 ```
-
-### C. Citizen Report Entity (`CitizenReport`)
-```typescript
-interface CitizenReport {
-  id: string;
-  location: [number, number];
-  address: string;
-  imageBase64?: string;
-  imageUrl?: string;
-  detectedFloodIndicators: string[];
-  estimatedDepth: 'ANESTHETIC' | 'ANKLE_DEEP' | 'KNEE_DEEP' | 'VEHICLE_SUBMERGED';
-  bedrockConfidenceScore: number; // 0 - 100
-  status: 'VERIFIED' | 'PENDING' | 'REJECTED';
-  submittedAt: string;
-}
-```
+- **Primary:** Open-Meteo API (`https://api.open-meteo.com/v1/forecast?...`).
+- **Timeout:** 2.5 seconds with `AbortSignal`.
 
 ---
 
-## 7. API Endpoints
+## H. Fallback / Mock Strategy (Zero-Failure Hackathon Pitch Guarantee)
 
-| Method | Endpoint | Description | Free/Dev Tier | Hackathon Fallback |
-| :--- | :--- | :--- | :--- | :--- |
-| `POST` | `/api/route` | Returns both Fastest & Safe routes with hazard intersections and risk scores | OSRM Public (`router.project-osrm.org`) | Local path graph with waypoint diversion |
-| `GET` | `/api/hazards` | Returns all active flood zones & citizen reports for current city/bbox | Internal Server Memory / DynamoDB | Seeded realistic monsoon datasets for major Indian metros |
-| `POST` | `/api/report` | Uploads citizen photo + GPS; calls Bedrock vision check | AWS Bedrock API | Heuristic color/water pattern detector + structured prompt validation |
-| `GET` | `/api/weather` | Current rainfall rate (mm/h) and precipitation probability | Open-Meteo free API (No key required) | Realistic cached storm vectors |
+To protect against network throttling, rate limits, or external API outages during live judge evaluation:
 
----
-
-## 8. Routing Strategy: How We Find the Safe Route
-
-A major challenge in hackathons is calculating a genuinely safer path without hosting a 20GB custom OSRM server:
-
-1. **Step 1 (Fastest Route Query):** Query OSRM standard `/route/v1/driving/{lon1},{lat1};{lon2},{lat2}?overview=full&geometries=geojson&alternatives=true`.
-2. **Step 2 (Intersection Detection):**
-   - We calculate the line-segment to circle-polygon distance between the polyline coordinates and all known `HazardZone` centers.
-   - If distance $\le$ hazard radius, an intersection is flagged and hazard severity is accumulated into the route's risk score.
-3. **Step 3 (Safe Alternative Generation):**
-   - *Attempt A:* Check OSRM alternative routes returned by the `alternatives=true` flag. Evaluate which alternative has zero or minimal hazard intersections.
-   - *Attempt B (Dynamic Avoidance Waypointing):* If all direct routes cross the hazard, calculate a diversion waypoint perpendicular to the hazard centroid outside its danger radius. Query OSRM with `origin → bypassWaypoint → destination`.
-   - *Attempt C (Offline Geometric Fallback):* In case OSRM is unreachable or throttled, construct high-fidelity spline paths that detour the arterial danger corridor.
+1. **Deterministic Seed Dataset (`seedHazards.ts`):**
+   - Curated high-risk monsoon corridors for 4 major Indian metros:
+     - **Bengaluru:** Silk Board Junction Underpass (48 cm), Bellandur Lake Spillway & ORR (36 cm), Hebbal Flyover underpass (22 cm), Marathahalli Multiplex underpass (32 cm).
+     - **Mumbai:** Milan Subway Underpass (55 cm), Hindmata Cinema TT Circle (45 cm), Andheri Subway (50 cm).
+     - **Delhi NCR:** Minto Bridge Underpass (60 cm), Pul Prahladpur Underpass (52 cm), ITO Ring Road (35 cm).
+     - **Chennai:** Velachery Lake Bypass (48 cm), Madipakkam Ram Nagar (38 cm).
+2. **Routing Provider Fallback (`MockRoutingProvider`):**
+   - If OSRM returns HTTP 429, timeout, or network error:
+     - Detects scenario from coordinates and returns pre-computed spline geometry detour.
+     - For custom ad-hoc coordinates, performs Hermite smooth-curve interpolation around the hazard centroid.
+3. **Weather Provider Fallback:**
+   - Pre-configured realistic monsoon rainfall vectors per city (Bengaluru: 34.2 mm/h, Mumbai: 48.0 mm/h, Delhi: 28.5 mm/h, Chennai: 38.6 mm/h).
+4. **Bedrock Fallback:**
+   - If Bedrock credentials are unavailable or throttled:
+     - Deterministic rule-based vision estimator evaluates image metadata and depth slider.
+     - Template-based safety briefing engine outputs crisp, context-aware driver explanations.
 
 ---
 
-## 9. Climate Risk Scoring Strategy (Deterministic)
+## I. Exact Implementation Order (18-Hour Timeline)
 
-We do **NOT** use non-deterministic LLMs for risk calculation. We use a transparent, defensible formula:
-
-$$\text{Segment Risk} = \sum_{h \in \text{Hazards}} \left[ \left( \frac{\text{Depth}_{\text{cm}}}{100} \times 0.4 \right) + \left( \frac{\text{Rainfall}_{\text{mm/h}}}{50} \times 0.3 \right) + \left( \text{SeverityWeight}_h \times 0.3 \right) \right] \times \text{ExposureLengthFactor}$$
-
-- Normalizes to a **0–100 Climate Risk Index (CRI)**:
-  - `0 – 25`: **Low Risk (Green)** — Minimal surface ponding, passable by all vehicles.
-  - `26 – 60`: **Moderate Risk (Amber)** — 10–25 cm waterlogging, pass with extreme caution.
-  - `61 – 100`: **Severe Hazard (Red)** — Inundation $\ge 30$ cm, high risk of engine hydrostatic lock and vehicle stranding.
-
----
-
-## 10. AI / Amazon Bedrock Integration Strategy
-
-Where AI adds real, genuine value in under 19 hours:
-
-1. **Multimodal Flood Verification (Amazon Bedrock / Claude 3 Haiku / Titan Multimodal):**
-   - **Input:** Citizen-uploaded mobile photo + user description.
-   - **Prompt:** Analyzes image strictly for:
-     1. Standing or rushing water covering road asphalt.
-     2. Reflection of streetlights/sky indicating water pooling.
-     3. Submersion relative to vehicle wheels, curbs, or sidewalks.
-   - **Output:** JSON schema:
-     ```json
-     {
-       "hasFloodEvidence": true,
-       "confidenceScore": 92,
-       "estimatedDepth": "KNEE_DEEP",
-       "reasoning": "Visible water level reaches midway up the hubcaps of parked vehicles with active ripples."
-     }
-     ```
-2. **Natural-Language Safety Briefing:**
-   - Summarizes the route difference in 2 concise sentences for driver safety (e.g., *"Fastest route leads through 40 cm standing water near Bellandur lake channel. ClimatePulse diverts via Inner Ring Road: +5 mins travel time, 72% less flood exposure."*).
-
----
-
-## 11. What Should ExplicitLY NOT Be Built (19-Hour Cut List)
-
-- ❌ **No User Login / Signup / OAuth:** Waste of judging time; anonymous session works instantly.
-- ❌ **No Turn-by-Turn GPS Voice Navigation:** Leaflet overview with step list is sufficient and far more reliable.
-- ❌ **No Complex Machine Learning Training Pipelines:** All flood zones use empirical depth + rainfall nowcasts.
-- ❌ **No Satellite Raster Processing Servers:** Pre-calculate or fetch live weather vectors directly.
-- ❌ **No Native Mobile App Builds:** A mobile-first, responsive web viewport is 100% accessible on any judge's device or desktop.
-
----
-
-## 12. Major Technical Risks & Mitigation
-
-| Technical Risk | Likelihood | Impact | Mitigation Strategy |
-| :--- | :--- | :--- | :--- |
-| OSRM Public API rate limiting or downtime | Medium | Critical | Pre-bundle a local waypoint routing engine and 3 canonical demo city corridors (Bengaluru, Mumbai, Delhi) with zero network dependency. |
-| AWS Bedrock credentials delay or quota limits | Low | High | Implement a robust mock/fallback analyzer with deterministic computer vision heuristics if API keys are missing. |
-| Complex map coordinate lag on Leaflet | Low | Medium | Simplify polyline GeoJSON (Douglas-Peucker algorithm or 500-point cap) to maintain 60 FPS rendering. |
-| Overcomplicating the UI | Medium | High | Keep the main screen map-first: route drawer slides up smoothly; risk comparison is immediately visible. |
-
----
-
-## 13. Realistic 19-Hour Implementation Schedule
-
-- **Hour 0 – 3:** Backend core & routing engine (OSRM integration + dynamic hazard avoidance + risk scoring).
-- **Hour 3 – 7:** Leaflet map interface, responsive layout, route polylines & hazard polygon rendering.
-- **Hour 7 – 10:** Route comparison card, metrics delta (+time, -risk), and visual explanation panel.
-- **Hour 10 – 14:** Citizen hazard reporting modal with image upload & Bedrock vision verification.
-- **Hour 14 – 17:** Polish UI, curated Indian monsoon hotspot presets (Silk Board, Milan Subway, Minto Bridge), responsive testing.
-- **Hour 17 – 19:** Final testing, demo pitch script preparation, backup deployment verification.
-
----
-
-## BUILD ORDER
-
-1. **Step 1: Core Data Models & Seed Data (`src/types/index.ts`, `src/data/seedHazards.ts`)**
-   - Define TypeScript interfaces for hazards, routes, citizen reports, and weather.
-   - Seed realistic high-risk flood zones for Bengaluru, Mumbai, and Delhi (with exact GPS coordinates, depth, and rainfall intensity).
-
-2. **Step 2: Server Routing & Risk Calculation Engine (`server.ts` & `src/services/routingService.ts`)**
-   - Implement OSRM routing client with alternative detection.
-   - Implement hazard intersection detection and the deterministic 0–100 Climate Risk formula.
-   - Implement dynamic waypoint diversion for the safe alternative route.
-
-3. **Step 3: Map Canvas & Leaflet Setup (`src/components/Map.tsx`)**
-   - Install Leaflet dependencies.
-   - Implement high-contrast map rendering with custom styled markers (Origin, Destination, Hazard Zones, Citizen Reports).
-   - Render contrasting polyline strokes (Hazardous Fastest vs. Emerald Safe Route).
-
-4. **Step 4: Route Input & Preset Corridors (`src/components/RouteSearch.tsx`)**
-   - Provide clean origin/destination inputs with instant one-click preset test scenarios (e.g. *"Bengaluru: Koramangala to Whitefield via Silk Board"*).
-
-5. **Step 5: Route Comparison & Climate Risk Audit Card (`src/components/RouteComparison.tsx`)**
-   - Display side-by-side time delta, distance delta, risk reduction percentage, and breakdown of avoided flood zones.
-
-6. **Step 6: Citizen Hazard Reporting Flow (`src/components/CitizenReportModal.tsx`)**
-   - Photo submission modal with simulated or live Bedrock vision evaluation, confidence badge, and instant map marker addition.
-
-7. **Step 7: Weather & Rain Radar Layer (`src/components/WeatherBar.tsx`)**
-   - Real-time Open-Meteo precipitation banner with active rain intensity indicators.
-
-8. **Step 8: Final Polish, Mobile Responsiveness & Build Verification**
-   - Verify complete build with `npm run build` / `compile_applet`.
-   - Ensure instant 60 FPS transitions and zero dead clicks.
+1. **Step 1: Clean Core Data Types & Hazard Registry Schema (`src/types/index.ts`)**
+   - Prune all DEM and raster types.
+   - Standardize DynamoDB hazard registry and report interfaces.
+2. **Step 2: Seed Dataset & Mock Providers (`src/data/seedHazards.ts`)**
+   - Finalize realistic Indian urban flood hotspots with exact GPS coordinates and depth profiles.
+   - Bundle pre-computed arterial corridor geometries.
+3. **Step 3: Deterministic In-Memory Routing & Intersection Engine (`src/services/routingService.ts`)**
+   - Implement `distancePointToSegmentMeters` and bounding-box candidate filter.
+   - Implement deterministic 0–100 Climate Risk Index formula.
+   - Implement normal detour waypoint calculation.
+4. **Step 4: Native Backend Lambda Handlers (`src/backend/handlers/`)**
+   - `routeHandler`: Calls `RoutingProvider`, runs intersection algorithm, generates comparison.
+   - `hazardsHandler`: Queries DynamoDB / memory store by `cityId`.
+   - `reportHandler`: Executes Bedrock multimodal vision verification, injects verified hazard.
+5. **Step 5: Frontend Map & Dual Route Visualization (`src/components/Map.tsx`)**
+   - Render contrasting polyline styles: Red/Amber dashed (Hazardous Fastest) vs. Bright Emerald solid (ClimatePulse Safe).
+   - Render pulsating hazard depth beacons (e.g., "48 cm") and AI-verified citizen pins.
+6. **Step 6: Route Comparison & Driver Briefing Card (`src/components/RouteComparison.tsx`)**
+   - Present delta metrics (+time, +dist, -risk %) side-by-side.
+   - Display Bedrock-generated explanation of avoided flood chokepoints.
+   - Interactive turn-by-turn simulation HUD.
+7. **Step 7: Citizen Flood Reporting Flow (`src/components/CitizenReportModal.tsx`)**
+   - Photo submission with instant Bedrock vision verification feedback and real-time route recalculation.
+8. **Step 8: End-to-End Build Verification & Pitch Dry-Run**
+   - Test offline fallback resilience, verify zero dead clicks, and run `npm run build`.

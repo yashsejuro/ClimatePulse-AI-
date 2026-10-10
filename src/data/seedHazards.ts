@@ -336,6 +336,38 @@ export const PRESET_SCENARIOS: PresetScenario[] = [
       coords: [28.5708, 77.3261]
     },
     context: 'Minto Bridge underpass has a notorious 2-foot water bowl during heavy downpours. Safe route routes cleanly along Barakhamba road and DND Flyway.'
+  },
+  {
+    id: 'chennai-velachery',
+    city: 'chennai',
+    title: 'Guindy to OMR Thoraipakkam',
+    tagline: 'Avoids 48 cm flooded Velachery Lake spillway via Madhya Kailash OMR bypass',
+    hazardHotspot: 'Velachery Bypass & Lake Spillway',
+    origin: {
+      name: 'Guindy Industrial Estate',
+      coords: [13.0067, 80.2025]
+    },
+    destination: {
+      name: 'OMR Thoraipakkam IT Corridor',
+      coords: [12.9382, 80.2335]
+    },
+    context: 'Standard navigation directs drivers along Velachery Main Road where the lake overflow has submerged 1.5 ft of the road. ClimatePulse diverts traffic via Madhya Kailash and the elevated Rajiv Gandhi Salai (OMR).'
+  },
+  {
+    id: 'chennai-madipakkam',
+    city: 'chennai',
+    title: 'Alandur to Medavakkam Junction',
+    tagline: 'Avoids 38 cm concealed storm drains in Madipakkam via Radial Road bypass',
+    hazardHotspot: 'Madipakkam Ram Nagar Lowlands',
+    origin: {
+      name: 'Alandur Metro / Mount',
+      coords: [13.0034, 80.1982]
+    },
+    destination: {
+      name: 'Medavakkam Koot Road',
+      coords: [12.9208, 80.1915]
+    },
+    context: 'Direct path leads through Madipakkam bazaar lowlands with continuous waterlogging. Safe route diverts along the elevated Pallavaram-Thoraipakkam Radial Road.'
   }
 ];
 

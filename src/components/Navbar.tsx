@@ -33,7 +33,7 @@ export const Navbar: React.FC<NavbarProps> = ({
             <div className="flex items-center gap-2">
               <span className="font-extrabold text-lg tracking-tight text-white">ClimatePulse AI</span>
               <span className="hidden sm:inline-block px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">
-                LIVE RADAR
+                MONSOON TELEMETRY
               </span>
             </div>
             <p className="text-xs text-slate-400 italic hidden md:block">

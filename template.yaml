@@ -1,0 +1,129 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: >
+  ClimatePulse AI - AWS Bharat Builds Tour / Environmental Hacks
+  "Fastest isn't always safest" — Climate-Aware Navigation Backend
+
+Parameters:
+  Stage:
+    Type: String
+    Default: prod
+    Description: Deployment stage
+  BedrockModelId:
+    Type: String
+    Default: anthropic.claude-3-haiku-20240307-v1:0
+    Description: Bedrock foundation model ID for flood image validation and briefings
+
+Globals:
+  Function:
+    Timeout: 15
+    MemorySize: 512
+    Runtime: nodejs22.x
+    Architectures:
+      - x86_64
+    Environment:
+      Variables:
+        NODE_OPTIONS: "--enable-source-maps"
+        HAZARD_TABLE_NAME: !Ref HazardsTable
+        REPORT_TABLE_NAME: !Ref ReportsTable
+        BEDROCK_MODEL_ID: !Ref BedrockModelId
+
+Resources:
+  # ==============================================================
+  # DYNAMODB TABLES (Key-Value Repositories with Zero Spatial Bloat)
+  # ==============================================================
+  HazardsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ClimatePulse-Hazards
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: ClimatePulseAI
+
+  ReportsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: ClimatePulse-Reports
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: PK
+          AttributeType: S
+        - AttributeName: SK
+          AttributeType: S
+      KeySchema:
+        - AttributeName: PK
+          KeyType: HASH
+        - AttributeName: SK
+          KeyType: RANGE
+      Tags:
+        - Key: Project
+          Value: ClimatePulseAI
+
+  # ==============================================================
+  # API GATEWAY (HTTP API v2 with Automatic CORS)
+  # ==============================================================
+  ClimatePulseHttpApi:
+    Type: AWS::Serverless::HttpApi
+    Properties:
+      StageName: !Ref Stage
+      CorsConfiguration:
+        AllowOrigins:
+          - "*"
+        AllowHeaders:
+          - Content-Type
+          - Authorization
+        AllowMethods:
+          - GET
+          - POST
+          - OPTIONS
+        MaxAge: 600
+
+  # ==============================================================
+  # CORE LAMBDA FUNCTION (Routing Engine + Spatial Filter + AI)
+  # ==============================================================
+  ClimatePulseFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      Handler: lambda.handler
+      CodeUri: ./
+      Policies:
+        # DynamoDB CRUD Access
+        - DynamoDBCrudPolicy:
+            TableName: !Ref HazardsTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref ReportsTable
+        # Amazon Bedrock Invocation Access
+        - Statement:
+            - Effect: Allow
+              Action:
+                - bedrock:InvokeModel
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/*"
+      Events:
+        ApiRoute:
+          Type: HttpApi
+          Properties:
+            ApiId: !Ref ClimatePulseHttpApi
+            Path: /api/{proxy+}
+            Method: ANY
+
+Outputs:
+  ApiEndpoint:
+    Description: HTTP API Gateway endpoint base URL
+    Value: !Sub "https://${ClimatePulseHttpApi}.execute-api.${AWS::Region}.amazonaws.com/${Stage}"
+  HazardsTable:
+    Description: DynamoDB Table Name for Active Flood Hazards
+    Value: !Ref HazardsTable
+  ReportsTable:
+    Description: DynamoDB Table Name for Citizen Waterlogging Reports
+    Value: !Ref ReportsTable

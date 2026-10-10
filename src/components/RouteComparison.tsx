@@ -190,7 +190,7 @@ export const RouteComparison: React.FC<RouteComparisonProps> = ({
         <div className="flex items-center gap-2 mb-1.5">
           <Sparkles className="w-4 h-4 text-emerald-400" />
           <span className="font-bold text-emerald-300 uppercase tracking-wider text-[11px]">
-            AI Navigation Safety Briefing
+            Climate-Aware Route Safety Briefing
           </span>
         </div>
         {isLoadingBriefing ? (
