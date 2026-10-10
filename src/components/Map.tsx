@@ -85,16 +85,20 @@ export const Map: React.FC<MapProps> = ({
       map.removeLayer(tileLayerRef.current);
     }
 
+    // ArcGIS World_Street_Map (Street theme) and World_Dark_Gray_Base (Dark theme)
+    const streetTileUrl =
+      'https://server.arcgisonline.com/arcgis/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
     const darkTileUrl =
       'https://services.arcgisonline.com/arcgis/rest/services/Canvas/World_Dark_Gray_Base/MapServer/tile/{z}/{y}/{x}';
-    const lightTileUrl =
-      'https://server.arcgisonline.com/ArcGIS/rest/services/World_Street_Map/MapServer/tile/{z}/{y}/{x}';
 
-    const tileUrl = mapTileTheme === 'dark' ? darkTileUrl : lightTileUrl;
+    const isDark = mapTileTheme === 'dark';
+    const tileUrl = isDark ? darkTileUrl : streetTileUrl;
 
     const tile = L.tileLayer(tileUrl, {
-      attribution: 'Tiles &copy; Esri',
-      maxZoom: 18
+      attribution: isDark
+        ? 'Tiles &copy; Esri &mdash; Esri, DeLorme, NAVTEQ'
+        : 'Tiles &copy; Esri &mdash; Source: Esri, DeLorme, NAVTEQ, USGS, Intermap, iPC, NRCAN, Esri Japan, METI, Esri China (Hong Kong), Esri (Thailand), TomTom',
+      maxZoom: 19
     }).addTo(map);
 
     tileLayerRef.current = tile;
@@ -372,7 +376,7 @@ export const Map: React.FC<MapProps> = ({
   }, [simulationPosition]);
 
   return (
-    <div className="relative w-full h-full min-h-[380px] overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
+    <div id="map" className="relative w-full h-full min-h-[380px] overflow-hidden rounded-xl border border-gray-200 bg-gray-50">
       <div ref={mapContainerRef} className="w-full h-full z-0" />
 
       {/* Clean Map Legend */}

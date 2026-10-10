@@ -8,13 +8,15 @@ import {
   ChevronUp,
   RotateCcw,
   Play,
+  Pause,
   Square,
   Car,
   MapPin,
   Search,
   CheckCircle2,
   Clock,
-  Sparkles
+  Sparkles,
+  AlertCircle
 } from 'lucide-react';
 import {
   CityId,
@@ -38,13 +40,21 @@ interface NavigationCardProps {
   onSelectScenario: (scenario: PresetScenario) => void;
   onSearchRoute: () => void;
   isLoading: boolean;
+  errorMessage: string | null;
   comparison: RouteComparisonResponse | null;
   selectedRouteType: 'SAFE' | 'FASTEST';
   onSelectRouteType: (type: 'SAFE' | 'FASTEST') => void;
   selectedVehicle: VehicleType;
   onSelectVehicle: (vehicle: VehicleType) => void;
-  isSimulating: boolean;
-  onToggleSimulation: () => void;
+  // Controlled Simulation Props
+  simulationMode: boolean;
+  isSimPlaying: boolean;
+  simulationStep: number;
+  totalSteps: number;
+  onEnterSimulation: () => void;
+  onStartSimulation: () => void;
+  onPauseSimulation: () => void;
+  onStopSimulation: () => void;
   aiBriefing?: string | null;
   onNewSearch: () => void;
 }
@@ -61,13 +71,20 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
   onSelectScenario,
   onSearchRoute,
   isLoading,
+  errorMessage,
   comparison,
   selectedRouteType,
   onSelectRouteType,
   selectedVehicle,
   onSelectVehicle,
-  isSimulating,
-  onToggleSimulation,
+  simulationMode,
+  isSimPlaying,
+  simulationStep,
+  totalSteps,
+  onEnterSimulation,
+  onStartSimulation,
+  onPauseSimulation,
+  onStopSimulation,
   aiBriefing,
   onNewSearch
 }) => {
@@ -123,6 +140,19 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
             </p>
           </div>
 
+          {/* Error Message banner if geocoding or routing fails */}
+          {errorMessage && (
+            <div className="p-3 bg-red-50 border border-red-200 rounded-xl flex items-start gap-2.5 text-xs text-red-800">
+              <AlertCircle className="w-4 h-4 text-red-600 shrink-0 mt-0.5" />
+              <div>
+                <div className="font-semibold">{errorMessage}</div>
+                <div className="text-[11px] text-red-600 mt-0.5">
+                  Please enter a valid landmark or city (e.g. Bengaluru, Electronic City, Whitefield, Mumbai, Delhi, Chennai, Hubballi).
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Location Inputs with Autocomplete */}
           <div className="space-y-2 relative">
             {/* Origin Input */}
@@ -141,7 +171,11 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                 }}
                 onFocus={() => setShowOriginSuggestions(true)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') onSearchRoute();
+                  if (e.key === 'Enter') {
+                    setShowOriginSuggestions(false);
+                    setShowDestSuggestions(false);
+                    onSearchRoute();
+                  }
                 }}
                 className="w-full pl-9 pr-8 py-2.5 bg-gray-50 hover:bg-gray-100/70 focus:bg-white border border-gray-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-xl text-sm text-gray-900 placeholder-gray-400 font-medium transition-colors"
               />
@@ -149,7 +183,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                 <button
                   type="button"
                   onClick={() => onChangeOrigin('')}
-                  className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-xs text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-xs text-gray-400 hover:text-gray-600 cursor-pointer"
                 >
                   ✕
                 </button>
@@ -199,7 +233,11 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                 }}
                 onFocus={() => setShowDestSuggestions(true)}
                 onKeyDown={(e) => {
-                  if (e.key === 'Enter') onSearchRoute();
+                  if (e.key === 'Enter') {
+                    setShowOriginSuggestions(false);
+                    setShowDestSuggestions(false);
+                    onSearchRoute();
+                  }
                 }}
                 className="w-full pl-9 pr-8 py-2.5 bg-gray-50 hover:bg-gray-100/70 focus:bg-white border border-gray-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-xl text-sm text-gray-900 placeholder-gray-400 font-medium transition-colors"
               />
@@ -207,7 +245,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                 <button
                   type="button"
                   onClick={() => onChangeDestination('')}
-                  className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-xs text-gray-400 hover:text-gray-600"
+                  className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-xs text-gray-400 hover:text-gray-600 cursor-pointer"
                 >
                   ✕
                 </button>
@@ -244,6 +282,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
 
           {/* Primary Action Button */}
           <button
+            type="button"
             onClick={() => {
               setShowOriginSuggestions(false);
               setShowDestSuggestions(false);
@@ -275,6 +314,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                 {scenarios.map((sc) => (
                   <button
                     key={sc.id}
+                    type="button"
                     onClick={() => onSelectScenario(sc)}
                     className="text-left px-2.5 py-1.5 rounded-lg border border-gray-200 hover:border-emerald-300 hover:bg-emerald-50/60 transition-colors text-xs group cursor-pointer"
                   >
@@ -291,76 +331,75 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
             </div>
           )}
 
-          {/* Subtle Secondary Vehicle Toggle (Closed by default) */}
+          {/* Subtle Secondary Vehicle Toggle */}
           <div className="pt-1">
             <button
               type="button"
               onClick={() => setShowVehiclePicker(!showVehiclePicker)}
               className="text-[11px] text-gray-500 hover:text-gray-800 flex items-center justify-between w-full py-1 cursor-pointer transition-colors"
             >
-              <span className="flex items-center gap-1.5">
-                <Car className="w-3 h-3 text-gray-400" />
-                <span>Vehicle: <strong className="text-gray-700 font-semibold">{currentVehicle.name}</strong> ({currentVehicle.clearanceCm}cm)</span>
-              </span>
-              {showVehiclePicker ? (
-                <ChevronUp className="w-3.5 h-3.5 text-gray-400" />
-              ) : (
-                <ChevronDown className="w-3.5 h-3.5 text-gray-400" />
-              )}
+              <div className="flex items-center gap-1.5">
+                <Car className="w-3 h-3" />
+                <span>
+                  Vehicle: <span className="font-semibold text-gray-700">{currentVehicle.name}</span> ({currentVehicle.clearanceCm}cm clearance)
+                </span>
+              </div>
+              {showVehiclePicker ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
             </button>
 
             {showVehiclePicker && (
-              <div className="mt-2 p-2.5 bg-gray-50 rounded-xl border border-gray-200 space-y-2">
-                <div className="grid grid-cols-4 gap-1">
-                  {VEHICLE_PROFILES.map((vp) => (
-                    <button
-                      key={vp.id}
-                      onClick={() => onSelectVehicle(vp.id)}
-                      className={`py-1 px-1.5 text-[11px] font-medium rounded-md border text-center transition-colors cursor-pointer ${
-                        selectedVehicle === vp.id
-                          ? 'bg-white text-emerald-800 border-emerald-600 font-semibold shadow-xs'
-                          : 'bg-white text-gray-700 border-gray-200 hover:bg-gray-100'
-                      }`}
-                    >
-                      {vp.id === 'twowheeler' ? 'Bike' : vp.id === 'sedan' ? 'Sedan' : vp.id === 'suv' ? 'SUV' : 'Bus'}
-                    </button>
-                  ))}
-                </div>
-                <p className="text-[10px] text-gray-500 leading-tight">
-                  {currentVehicle.description}
-                </p>
+              <div className="grid grid-cols-2 gap-1.5 mt-2 p-2 bg-gray-50 rounded-xl border border-gray-200">
+                {VEHICLE_PROFILES.map((vp) => (
+                  <button
+                    key={vp.id}
+                    type="button"
+                    onClick={() => {
+                      onSelectVehicle(vp.id);
+                      setShowVehiclePicker(false);
+                    }}
+                    className={`p-2 rounded-lg text-left text-xs transition-colors cursor-pointer ${
+                      selectedVehicle === vp.id
+                        ? 'bg-emerald-700 text-white font-semibold'
+                        : 'bg-white hover:bg-gray-100 text-gray-700 border border-gray-200'
+                    }`}
+                  >
+                    <div className="font-semibold">{vp.name}</div>
+                    <div className={`text-[10px] ${selectedVehicle === vp.id ? 'text-emerald-100' : 'text-gray-500'}`}>
+                      {vp.clearanceCm} cm clearance
+                    </div>
+                  </button>
+                ))}
               </div>
             )}
           </div>
         </div>
       ) : (
-        /* ---------------- STATE 2: ROUTE RESULTS (Navigation-First Comparison) ---------------- */
-        <div className="p-4 sm:p-5 space-y-4 max-h-[80vh] overflow-y-auto">
-          {/* Header & Back Button */}
-          <div className="flex items-center justify-between pb-3 border-b border-gray-100">
-            <button
-              onClick={onNewSearch}
-              className="flex items-center gap-1.5 text-xs font-semibold text-emerald-700 hover:text-emerald-900 transition-colors cursor-pointer"
-            >
-              <RotateCcw className="w-3.5 h-3.5" />
-              <span>Modify Route</span>
-            </button>
-            <span className="text-[11px] font-semibold uppercase tracking-wider text-gray-400">
-              Route Evaluation
-            </span>
-          </div>
-
-          {/* Principle Headline */}
-          <div className="bg-emerald-50/70 border border-emerald-200 rounded-xl p-2.5 flex items-center gap-2">
-            <ShieldCheck className="w-4 h-4 text-emerald-700 shrink-0" />
-            <div className="text-xs text-emerald-950 font-medium">
-              <strong>Fastest isn't always safest.</strong> Flood avoidance active.
+        /* ---------------- STATE 2: ROUTE EVALUATION & RESULTS ---------------- */
+        <div className="p-4 sm:p-5 space-y-3.5">
+          {/* Header with Origin -> Destination */}
+          <div className="flex items-start justify-between pb-3 border-b border-gray-100">
+            <div className="min-w-0 pr-2">
+              <div className="flex items-center gap-1 text-[11px] font-semibold text-gray-400 uppercase tracking-wide">
+                <span>Route comparison</span>
+                <span>•</span>
+                <span>{currentVehicle.name}</span>
+              </div>
+              <div className="text-sm font-bold text-gray-900 truncate mt-0.5">
+                {originText} <span className="text-gray-400 font-normal">→</span> {destinationText}
+              </div>
             </div>
+            <button
+              type="button"
+              onClick={onNewSearch}
+              className="text-xs font-semibold text-emerald-700 hover:text-emerald-800 hover:underline shrink-0 cursor-pointer pt-0.5"
+            >
+              Modify
+            </button>
           </div>
 
-          {/* Route Options (Interactive Selection) */}
+          {/* ROUTE CARDS: SAFE VS FASTEST */}
           <div className="space-y-2.5">
-            {/* OPTION 1: SAFE ROUTE (RECOMMENDED) */}
+            {/* OPTION 1: CLIMATE-SAFE ROUTE (RECOMMENDED) */}
             <div
               onClick={() => onSelectRouteType('SAFE')}
               className={`p-3.5 rounded-xl border-2 transition-all cursor-pointer relative ${
@@ -375,7 +414,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                     <span className="text-xs font-bold text-emerald-800 uppercase tracking-wide">
                       Safe Route
                     </span>
-                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-600 text-white">
+                    <span className="px-1.5 py-0.2 rounded text-[10px] font-bold bg-emerald-100 text-emerald-800 border border-emerald-300">
                       RECOMMENDED
                     </span>
                   </div>
@@ -490,36 +529,84 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
             </div>
           )}
 
-          {/* Bottom Actions */}
-          <div className="pt-1 flex items-center gap-2">
-            <button
-              onClick={onToggleSimulation}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer ${
-                isSimulating
-                  ? 'bg-red-600 hover:bg-red-700 text-white'
-                  : 'bg-gray-100 hover:bg-gray-200 text-gray-800'
-              }`}
-            >
-              {isSimulating ? (
-                <>
-                  <Square className="w-3.5 h-3.5" />
-                  <span>Stop Preview</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3.5 h-3.5" />
-                  <span>Simulate Drive</span>
-                </>
-              )}
-            </button>
+          {/* Simulation Controls Panel (Clear User Control: Start, Pause, Resume, Stop) */}
+          {simulationMode ? (
+            <div className="p-3 bg-emerald-50/70 rounded-xl border border-emerald-200 space-y-2">
+              <div className="flex items-center justify-between text-xs">
+                <div className="flex items-center gap-1.5 font-semibold text-emerald-900">
+                  <Car className="w-3.5 h-3.5 text-emerald-700" />
+                  <span>
+                    Simulating {selectedRouteType === 'SAFE' ? 'Safe Route' : 'Fastest Route'}
+                  </span>
+                </div>
+                <span className="text-[11px] text-gray-600 font-mono">
+                  {simulationStep + 1} / {Math.max(1, totalSteps)} pts
+                </span>
+              </div>
 
-            <button
-              onClick={onNewSearch}
-              className="py-2.5 px-3 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 text-gray-700 transition-colors cursor-pointer"
-            >
-              New Search
-            </button>
-          </div>
+              {/* Progress Bar */}
+              <div className="w-full bg-emerald-200/60 rounded-full h-1.5 overflow-hidden">
+                <div
+                  className="bg-emerald-600 h-1.5 rounded-full transition-all duration-200"
+                  style={{
+                    width: `${totalSteps > 0 ? ((simulationStep + 1) / totalSteps) * 100 : 0}%`
+                  }}
+                />
+              </div>
+
+              {/* Explicit Simulation Action Buttons: [ Start / Resume ] [ Pause ] [ Stop ] */}
+              <div className="flex items-center gap-1.5 pt-1">
+                {!isSimPlaying ? (
+                  <button
+                    type="button"
+                    onClick={onStartSimulation}
+                    className="flex-1 py-1.5 px-3 rounded-lg bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Play className="w-3.5 h-3.5" />
+                    <span>{simulationStep > 0 ? 'Resume' : 'Start'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={onPauseSimulation}
+                    className="flex-1 py-1.5 px-3 rounded-lg bg-amber-600 hover:bg-amber-700 text-white text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <Pause className="w-3.5 h-3.5" />
+                    <span>Pause</span>
+                  </button>
+                )}
+
+                <button
+                  type="button"
+                  onClick={onStopSimulation}
+                  className="py-1.5 px-3 rounded-lg bg-gray-200 hover:bg-gray-300 text-gray-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                >
+                  <Square className="w-3 h-3" />
+                  <span>Exit Simulation</span>
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* Bottom Actions */
+            <div className="pt-1 flex items-center gap-2">
+              <button
+                type="button"
+                onClick={onEnterSimulation}
+                className="flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold flex items-center justify-center gap-1.5 bg-gray-100 hover:bg-gray-200 text-gray-800 transition-colors cursor-pointer"
+              >
+                <Play className="w-3.5 h-3.5" />
+                <span>Simulate Drive</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onNewSearch}
+                className="py-2.5 px-3 rounded-xl text-xs font-semibold border border-gray-200 hover:bg-gray-50 text-gray-700 transition-colors cursor-pointer"
+              >
+                New Search
+              </button>
+            </div>
+          )}
         </div>
       )}
     </div>

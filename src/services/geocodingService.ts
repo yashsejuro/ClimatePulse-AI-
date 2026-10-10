@@ -1,5 +1,5 @@
 import { CityId } from '../types';
-import { CITY_CENTERS } from '../data/seedHazards';
+import { CITIES } from '../data/cities';
 
 export interface PlaceResult {
   name: string;
@@ -9,14 +9,16 @@ export interface PlaceResult {
 
 const CITY_LANDMARKS: Record<CityId, PlaceResult[]> = {
   bengaluru: [
+    { name: 'Bengaluru', detail: 'City Center, Bengaluru Urban', coords: [12.9716, 77.5946] },
     { name: 'Koramangala 4th Block', detail: 'Sony World Signal, Bengaluru', coords: [12.9345, 77.6266] },
     { name: 'Electronic City Phase 1', detail: 'Toll Plaza / Wipro Gate, Bengaluru', coords: [12.8452, 77.6602] },
     { name: 'Silk Board Junction', detail: 'Hosur Rd / Outer Ring Rd Underpass', coords: [12.9177, 77.6238] },
+    { name: 'Whitefield ITPL', detail: 'International Tech Park, Bengaluru', coords: [12.9863, 77.7377] },
+    { name: 'Hosur', detail: 'Hosur Town / Border Corridor', coords: [12.7409, 77.8253] },
     { name: 'HSR Layout Sector 2', detail: '27th Main Road, Bengaluru', coords: [12.9121, 77.6446] },
     { name: 'Prestige Tech Park', detail: 'Marathahalli - Sarjapur Outer Ring Rd', coords: [12.9366, 77.6918] },
     { name: 'Bellandur Lake Spillway', detail: 'Ecospace, Outer Ring Road', coords: [12.9298, 77.6745] },
     { name: 'Indiranagar 100ft Road', detail: '12th Main Junction, Bengaluru', coords: [12.9719, 77.6412] },
-    { name: 'Whitefield ITPL', detail: 'International Tech Park, Bengaluru', coords: [12.9863, 77.7377] },
     { name: 'MG Road Metro Station', detail: 'Brigade Road Junction, Bengaluru', coords: [12.9756, 77.6097] },
     { name: 'Marathahalli Bridge', detail: 'HAL Airport Road / ORR', coords: [12.9591, 77.6974] },
     { name: 'Hebbal Flyover', detail: 'Airport Expressway / Bellary Rd', coords: [13.0359, 77.5970] },
@@ -25,9 +27,11 @@ const CITY_LANDMARKS: Record<CityId, PlaceResult[]> = {
     { name: 'JP Nagar 6th Phase', detail: 'Ring Road Junction, Bengaluru', coords: [12.9063, 77.5857] },
     { name: 'Majestic KSR Railway Station', detail: 'City Railway Station, Bengaluru', coords: [12.9781, 77.5695] },
     { name: 'Sarjapur Road Wipro', detail: 'Kaikondrahalli, Bengaluru', coords: [12.9140, 77.6580] },
+    { name: 'Hubballi', detail: 'Hubballi Urban, Karnataka', coords: [15.3647, 75.1240] },
     { name: 'Kempegowda Airport (BLR)', detail: 'Devanahalli, Bengaluru', coords: [13.1986, 77.7066] }
   ],
   chennai: [
+    { name: 'Chennai', detail: 'City Center, Chennai', coords: [13.0827, 80.2707] },
     { name: 'Guindy Industrial Estate', detail: 'Kathipara Junction, Chennai', coords: [13.0067, 80.2025] },
     { name: 'OMR Thoraipakkam', detail: 'Rajiv Gandhi Salai IT Corridor', coords: [12.9382, 80.2335] },
     { name: 'Velachery Lake Bypass', detail: 'Velachery Main Road, Chennai', coords: [12.9784, 80.2185] },
@@ -43,6 +47,7 @@ const CITY_LANDMARKS: Record<CityId, PlaceResult[]> = {
     { name: 'Chennai Airport (MAA)', detail: 'Meenambakkam, Chennai', coords: [12.9941, 80.1709] }
   ],
   mumbai: [
+    { name: 'Mumbai', detail: 'City Center, Mumbai', coords: [19.0760, 72.8777] },
     { name: 'Santacruz West', detail: 'Linking Road, Mumbai', coords: [19.0831, 72.8340] },
     { name: 'Dadar TT Circle', detail: 'Dr. Babasaheb Ambedkar Rd, Mumbai', coords: [19.0178, 72.8478] },
     { name: 'Milan Subway Underpass', detail: 'SV Road / Railway Submerged Track', coords: [19.0838, 72.8427] },
@@ -55,6 +60,7 @@ const CITY_LANDMARKS: Record<CityId, PlaceResult[]> = {
     { name: 'Mumbai Airport T2 (BOM)', detail: 'Sahar / Western Express Hwy', coords: [19.0896, 72.8656] }
   ],
   delhi: [
+    { name: 'Delhi', detail: 'National Capital Territory', coords: [28.6139, 77.2090] },
     { name: 'Connaught Place Inner Circle', detail: 'Rajiv Chowk, New Delhi', coords: [28.6328, 77.2197] },
     { name: 'Noida Sector 18 Mall', detail: 'Atta Market / Wave Mall, Noida', coords: [28.5708, 77.3261] },
     { name: 'Minto Bridge Underpass', detail: 'Deen Dayal Upadhyay Marg Submerged Point', coords: [28.6341, 77.2274] },
@@ -107,78 +113,119 @@ export function searchPlaceSuggestions(query: string, city: CityId): PlaceResult
  * Resolves a text location to coordinates.
  * Priority:
  * 1. Explicit lat, lon in string
- * 2. Local high-speed landmark dictionary match
- * 3. External Nominatim geocoder with city context
- * 4. Fallback: city center with deterministic small shift
+ * 2. Exact match in active city landmarks
+ * 3. Exact match across all Indian city landmarks
+ * 4. Substring match in active city landmarks
+ * 5. Substring match across all Indian city landmarks
+ * 6. Live OpenStreetMap Nominatim with proper headers
+ * 
+ * If location cannot be found, throws an Error with a clear message:
+ * "Could not find location: <query>".
  */
 export async function resolveLocation(
   query: string,
   city: CityId
 ): Promise<{ name: string; coords: [number, number] }> {
   const trimmed = query.trim();
+  if (!trimmed) {
+    throw new Error('Please enter a location');
+  }
 
   // 1. Check coordinates
   const parsed = parseCoordinates(trimmed);
   if (parsed) {
+    console.log(`[GEOCODE] Parsed explicit coordinates: [${parsed[0]}, ${parsed[1]}] for "${trimmed}"`);
     return { name: trimmed, coords: parsed };
   }
 
-  // 2. Check local landmark dictionary
   const q = trimmed.toLowerCase();
-  const landmarks = CITY_LANDMARKS[city] || [];
-  const exactMatch = landmarks.find((l) => l.name.toLowerCase() === q);
-  if (exactMatch) {
-    return { name: exactMatch.name, coords: exactMatch.coords };
+
+  // 2. Exact match in active city landmarks
+  const cityLandmarks = CITY_LANDMARKS[city] || [];
+  const activeExact = cityLandmarks.find(
+    (l) => l.name.toLowerCase() === q || l.detail.toLowerCase() === q
+  );
+  if (activeExact) {
+    console.log(`[GEOCODE] Exact active city match: ${activeExact.name} [${activeExact.coords}] for "${trimmed}"`);
+    return { name: activeExact.name, coords: activeExact.coords };
   }
 
-  const partialMatch = landmarks.find(
+  // 3. Exact match across all Indian cities
+  for (const c of Object.keys(CITY_LANDMARKS) as CityId[]) {
+    const list = CITY_LANDMARKS[c];
+    const match = list.find((l) => l.name.toLowerCase() === q);
+    if (match) {
+      console.log(`[GEOCODE] Exact all-city match: ${match.name} [${match.coords}] for "${trimmed}"`);
+      return { name: match.name, coords: match.coords };
+    }
+  }
+
+  // 4. Substring match in active city landmarks
+  const activePartial = cityLandmarks.find(
     (l) => l.name.toLowerCase().includes(q) || q.includes(l.name.toLowerCase())
   );
-  if (partialMatch) {
-    return { name: partialMatch.name, coords: partialMatch.coords };
+  if (activePartial) {
+    console.log(`[GEOCODE] Partial active city match: ${activePartial.name} [${activePartial.coords}] for "${trimmed}"`);
+    return { name: activePartial.name, coords: activePartial.coords };
   }
 
-  // 3. Nominatim geocoding with city context
+  // 5. Substring match across any city landmarks
+  for (const c of Object.keys(CITY_LANDMARKS) as CityId[]) {
+    const list = CITY_LANDMARKS[c];
+    const match = list.find(
+      (l) => l.name.toLowerCase().includes(q) || q.includes(l.name.toLowerCase())
+    );
+    if (match) {
+      console.log(`[GEOCODE] Partial all-city match: ${match.name} [${match.coords}] for "${trimmed}"`);
+      return { name: match.name, coords: match.coords };
+    }
+  }
+
+  // 6. Live OpenStreetMap Nominatim geocoder
   try {
-    const cityMeta = CITY_CENTERS[city] || CITY_CENTERS.bengaluru;
-    const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-      `${trimmed}, ${cityMeta.name}`
-    )}&limit=1`;
+    const cityConfig = CITIES[city] || CITIES.bengaluru;
+    // First try with city suffix for localized results
+    const queriesToTry = [
+      `${trimmed}, ${cityConfig.name}`,
+      trimmed
+    ];
 
-    const res = await fetch(searchUrl, {
-      headers: { 'Accept': 'application/json' },
-      signal: AbortSignal.timeout(3000)
-    });
+    for (const searchQuery of queriesToTry) {
+      const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+        searchQuery
+      )}&limit=1`;
 
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        const lat = parseFloat(data[0].lat);
-        const lon = parseFloat(data[0].lon);
-        if (!isNaN(lat) && !isNaN(lon)) {
-          return {
-            name: data[0].display_name ? data[0].display_name.split(',')[0] : trimmed,
-            coords: [lat, lon]
-          };
+      const res = await fetch(searchUrl, {
+        headers: {
+          'Accept': 'application/json',
+          'User-Agent': 'ClimatePulse-App/1.0'
+        },
+        signal: AbortSignal.timeout(3500)
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data) && data.length > 0) {
+          const lat = parseFloat(data[0].lat);
+          const lon = parseFloat(data[0].lon);
+          if (!isNaN(lat) && !isNaN(lon)) {
+            const resolvedName = data[0].display_name
+              ? data[0].display_name.split(',')[0]
+              : trimmed;
+            console.log(`[GEOCODE] Nominatim found: ${resolvedName} [${lat}, ${lon}] for "${trimmed}"`);
+            return {
+              name: resolvedName,
+              coords: [lat, lon]
+            };
+          }
         }
       }
     }
-  } catch {
-    // network timeout or failure, proceed to fallback
+  } catch (err) {
+    console.warn('[GEOCODE] Nominatim query error:', err);
   }
 
-  // 4. Fallback to city center
-  const cityCenter = CITY_CENTERS[city] || CITY_CENTERS.bengaluru;
-  // generate a small spread offset based on string hash so origin and destination don't collide
-  let hash = 0;
-  for (let i = 0; i < trimmed.length; i++) {
-    hash = (hash << 5) - hash + trimmed.charCodeAt(i);
-  }
-  const offsetLat = ((hash % 100) / 100) * 0.04;
-  const offsetLon = (((hash >> 2) % 100) / 100) * 0.04;
-
-  return {
-    name: trimmed,
-    coords: [cityCenter.center[0] + offsetLat, cityCenter.center[1] + offsetLon]
-  };
+  // If geocoding fails completely: THROW AN ERROR, DO NOT SILENTLY DEFAULT
+  console.error(`[GEOCODE] Failed to resolve: "${trimmed}"`);
+  throw new Error(`Could not find that location: "${trimmed}"`);
 }

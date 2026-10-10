@@ -13,11 +13,11 @@ import {
   VehicleType,
   CityWeather
 } from './types';
+import { CITIES } from './data/cities';
 import {
   INITIAL_HAZARDS,
   INITIAL_WEATHER,
   PRESET_SCENARIOS,
-  CITY_CENTERS,
   VEHICLE_PROFILES
 } from './data/seedHazards';
 import { calculateDualRoutes } from './services/routingService';
@@ -25,62 +25,87 @@ import { resolveLocation, PlaceResult } from './services/geocodingService';
 import { Layers, Eye, EyeOff } from 'lucide-react';
 
 export default function App() {
+  // 1. City state (Canonical city ID)
   const [currentCity, setCurrentCity] = useState<CityId>('bengaluru');
   const [weather, setWeather] = useState<CityWeather>(INITIAL_WEATHER.bengaluru);
   const [hazards, setHazards] = useState<HazardZone[]>(INITIAL_HAZARDS);
   const [citizenReports, setCitizenReports] = useState<CitizenReport[]>([]);
 
-  // Scenario & Input State
+  // 2. Search & Location State (Explicit separation of input text vs resolved coordinates)
   const cityScenarios = PRESET_SCENARIOS.filter((s) => s.city === currentCity);
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(
     cityScenarios[0]?.id || null
   );
 
   const initialPreset = cityScenarios[0] || PRESET_SCENARIOS[0];
-  const [originText, setOriginText] = useState(initialPreset.origin.name);
-  const [destinationText, setDestinationText] = useState(initialPreset.destination.name);
-  const [originCoords, setOriginCoords] = useState<[number, number]>(initialPreset.origin.coords);
-  const [destCoords, setDestCoords] = useState<[number, number]>(initialPreset.destination.coords);
+  const [originText, setOriginText] = useState<string>(initialPreset.origin.name);
+  const [destinationText, setDestinationText] = useState<string>(initialPreset.destination.name);
+  const [resolvedOriginCoords, setResolvedOriginCoords] = useState<[number, number]>(
+    initialPreset.origin.coords
+  );
+  const [resolvedDestCoords, setResolvedDestCoords] = useState<[number, number]>(
+    initialPreset.destination.coords
+  );
+
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>('sedan');
 
-  // Evaluation & Route State
+  // 3. Evaluation & Route State
   const [comparison, setComparison] = useState<RouteComparisonResponse | null>(null);
   const [selectedRouteType, setSelectedRouteType] = useState<'FASTEST' | 'SAFE'>('SAFE');
   const [isLoading, setIsLoading] = useState<boolean>(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [aiBriefing, setAiBriefing] = useState<string | null>(null);
-  const [isLoadingBriefing, setIsLoadingBriefing] = useState<boolean>(false);
 
-  // Simulation State
-  const [isSimulating, setIsSimulating] = useState<boolean>(false);
+  // 4. Controlled Simulation State (Explicit user control: open mode, play, pause, stop)
+  const [simulationMode, setSimulationMode] = useState<boolean>(false);
+  const [isSimPlaying, setIsSimPlaying] = useState<boolean>(false);
   const [simulationIndex, setSimulationIndex] = useState<number>(0);
   const [simulationPosition, setSimulationPosition] = useState<[number, number] | null>(null);
   const simulationTimerRef = useRef<any>(null);
 
-  // UI Modals & Map controls
+  // 5. UI Modals & Map options
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
   const [isHazardsListOpen, setIsHazardsListOpen] = useState(false);
   const [showHazards, setShowHazards] = useState(true);
   const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('streets');
 
-  // Load weather, hazards and scenarios when city changes
+  // City change handler: switches city context without silently overwriting active custom searches
+  const handleSelectCity = (newCity: CityId) => {
+    console.log(`[CITY CHANGE] Switching to: ${newCity}`);
+    setCurrentCity(newCity);
+
+    // Stop any running simulation
+    setSimulationMode(false);
+    setIsSimPlaying(false);
+    setSimulationPosition(null);
+
+    // Load initial scenario defaults for this newly selected city
+    const scenariosForCity = PRESET_SCENARIOS.filter((s) => s.city === newCity);
+    const firstScenario = scenariosForCity[0];
+
+    if (firstScenario) {
+      setActiveScenarioId(firstScenario.id);
+      setOriginText(firstScenario.origin.name);
+      setDestinationText(firstScenario.destination.name);
+      setResolvedOriginCoords(firstScenario.origin.coords);
+      setResolvedDestCoords(firstScenario.destination.coords);
+      setErrorMessage(null);
+    } else {
+      setActiveScenarioId(null);
+      const cMeta = CITIES[newCity] || CITIES.bengaluru;
+      setOriginText(`${cMeta.name} Center`);
+      setDestinationText(`${cMeta.name} North`);
+      setResolvedOriginCoords(cMeta.center);
+      setResolvedDestCoords([cMeta.center[0] + 0.05, cMeta.center[1] + 0.05]);
+      setErrorMessage(null);
+    }
+  };
+
+  // Sync city data (weather, hazards, reports)
   useEffect(() => {
     const defaultW = INITIAL_WEATHER[currentCity] || INITIAL_WEATHER.bengaluru;
     setWeather(defaultW);
 
-    const filteredScenarios = PRESET_SCENARIOS.filter((s) => s.city === currentCity);
-    const newScenario = filteredScenarios[0] || null;
-
-    if (newScenario) {
-      setActiveScenarioId(newScenario.id);
-      setOriginText(newScenario.origin.name);
-      setDestinationText(newScenario.destination.name);
-      setOriginCoords(newScenario.origin.coords);
-      setDestCoords(newScenario.destination.coords);
-    } else {
-      setActiveScenarioId(null);
-    }
-
-    // Fetch from backend API with fallback
     fetch(`/api/weather?city=${currentCity}`)
       .then((res) => res.json())
       .then((data) => {
@@ -105,132 +130,144 @@ export default function App() {
       .catch(() => {});
   }, [currentCity]);
 
-  // Recalculate routes whenever coords, vehicle, hazards, or scenario changes
-  const runRouteCalculation = async (override?: {
-    origin?: [number, number];
-    dest?: [number, number];
+  // Route calculation execution
+  const executeRouteCalculation = async (params: {
+    origin: [number, number];
+    dest: [number, number];
     scenarioId?: string;
   }) => {
     setIsLoading(true);
-    setIsSimulating(false);
+    setErrorMessage(null);
+    // Stop any simulation
+    setSimulationMode(false);
+    setIsSimPlaying(false);
     setSimulationPosition(null);
-
-    const origin = override?.origin || originCoords;
-    const dest = override?.dest || destCoords;
-    const scenarioId = override?.scenarioId !== undefined ? override.scenarioId : (activeScenarioId || undefined);
 
     const vehicle = VEHICLE_PROFILES.find((v) => v.id === selectedVehicle) || VEHICLE_PROFILES[0];
 
+    const payload = {
+      origin: params.origin,
+      destination: params.dest,
+      vehicleId: selectedVehicle,
+      scenarioId: params.scenarioId,
+      city: currentCity
+    };
+
+    console.log('[ROUTE REQUEST] payload:', payload);
+
     try {
-      // 1. Dual-source execution: Try backend route API first
       let result: RouteComparisonResponse | null = null;
+
+      // 1. Dual-source execution: Call backend /api/route first
       try {
         const response = await fetch('/api/route', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            origin,
-            destination: dest,
-            vehicleId: selectedVehicle,
-            scenarioId,
-            city: currentCity
-          })
+          body: JSON.stringify(payload)
         });
         if (response.ok) {
           result = await response.json();
+          console.log('[ROUTE RESPONSE] status: 200 via backend API', result);
+        } else {
+          const errData = await response.json().catch(() => ({}));
+          console.warn('[ROUTE RESPONSE] server returned error:', response.status, errData);
         }
-      } catch {
-        // Fall back to client calculation
+      } catch (networkErr) {
+        console.warn('[ROUTE REQUEST] API network error, trying client fallback:', networkErr);
       }
 
-      // 2. Client-side fallback if server is unreachable
+      // 2. Client-side fallback if server fails
       if (!result) {
+        console.log('[ROUTE CALCULATION] Falling back to client-side routing engine');
         result = await calculateDualRoutes(
-          origin,
-          dest,
+          params.origin,
+          params.dest,
           hazards,
           vehicle,
           weather.rainfallMmPerHour,
-          scenarioId
+          params.scenarioId
         );
       }
 
+      if (!result || !result.fastest || !result.safe) {
+        throw new Error('Could not calculate a route.');
+      }
+
+      console.log(
+        `[ROUTE RESPONSE] Success: Safe ${result.safe.distanceKm}km (${result.safe.durationMinutes}min), Fastest ${result.fastest.distanceKm}km (${result.fastest.durationMinutes}min)`
+      );
+
       setComparison(result);
       setSelectedRouteType('SAFE');
-
-      // 3. Request safety briefing
-      if (result.fastest.hazardsIntersected.length > 0) {
-        setIsLoadingBriefing(true);
-        fetch('/api/ai-briefing', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            fastestHazards: result.fastest.hazardsIntersected,
-            timeDelta: result.timeDeltaMinutes,
-            distanceDelta: result.distanceDeltaKm,
-            vehicleName: vehicle.name
-          })
-        })
-          .then((res) => res.json())
-          .then((data) => {
-            if (data?.briefing) setAiBriefing(data.briefing);
-          })
-          .catch(() => {
-            setAiBriefing(result.safetySummary);
-          })
-          .finally(() => setIsLoadingBriefing(false));
-      } else {
-        setAiBriefing(result.safetySummary);
-      }
-    } catch (err) {
-      console.error('Calculation error:', err);
+      setAiBriefing(result.safetySummary);
+    } catch (err: any) {
+      console.error('[ROUTE CALCULATION ERROR]:', err);
+      setErrorMessage(err?.message || 'Could not calculate a route.');
+      setComparison(null);
     } finally {
       setIsLoading(false);
     }
   };
 
-  // Initial calculation once scenario / city is set
+  // Run calculation when city changes
   useEffect(() => {
-    runRouteCalculation();
-  }, [currentCity, selectedVehicle]);
-
-  // Primary user action: Find Safer Route with real Location Resolution / Geocoding
-  const handleSearchRoute = async () => {
-    setIsLoading(true);
-    let resolvedOriginCoords = originCoords;
-    let resolvedDestCoords = destCoords;
-
-    try {
-      // Trace: FROM INPUT -> LOCATION RESOLUTION -> COORDINATES -> POST /api/route
-      const [resolvedOrigin, resolvedDest] = await Promise.all([
-        resolveLocation(originText, currentCity),
-        resolveLocation(destinationText, currentCity)
-      ]);
-
-      resolvedOriginCoords = resolvedOrigin.coords;
-      resolvedDestCoords = resolvedDest.coords;
-
-      setOriginCoords(resolvedOriginCoords);
-      setDestCoords(resolvedDestCoords);
-    } catch (err) {
-      console.warn('Geocoding resolution fallback to existing coordinates', err);
-    }
-
-    runRouteCalculation({
+    executeRouteCalculation({
       origin: resolvedOriginCoords,
       dest: resolvedDestCoords,
       scenarioId: activeScenarioId || undefined
     });
+  }, [currentCity, selectedVehicle]);
+
+  // Primary user action: Find Safer Route
+  const handleSearchRoute = async () => {
+    console.log('[ROUTE SEARCH]');
+    console.log('origin input:', originText);
+    console.log('destination input:', destinationText);
+
+    setIsLoading(true);
+    setErrorMessage(null);
+
+    // Clear scenario ID for manual searches so it doesn't lock to demo preset
+    setActiveScenarioId(null);
+
+    try {
+      // Trace: Origin input -> destination input -> geocoding -> resolved coordinates
+      const [originResolved, destResolved] = await Promise.all([
+        resolveLocation(originText, currentCity),
+        resolveLocation(destinationText, currentCity)
+      ]);
+
+      console.log('[GEOCODE]');
+      console.log('origin coordinates:', originResolved.coords, `(${originResolved.name})`);
+      console.log('destination coordinates:', destResolved.coords, `(${destResolved.name})`);
+
+      setResolvedOriginCoords(originResolved.coords);
+      setResolvedDestCoords(destResolved.coords);
+
+      await executeRouteCalculation({
+        origin: originResolved.coords,
+        dest: destResolved.coords,
+        scenarioId: undefined // Explicitly undefined: NEVER use preset for manual search!
+      });
+    } catch (err: any) {
+      console.error('[SEARCH FAILED]:', err.message);
+      setIsLoading(false);
+      setErrorMessage(err?.message || 'Could not find that location.');
+      setComparison(null);
+    }
   };
 
-  // Handle Scenario Selection (1-click demo corridors)
+  // Handle Preset Corridor Click (1-click demo routes)
   const handleSelectScenario = (scenario: PresetScenario) => {
+    console.log(`[SCENARIO SELECT] ${scenario.id}: ${scenario.title}`);
     setActiveScenarioId(scenario.id);
     setOriginText(scenario.origin.name);
     setDestinationText(scenario.destination.name);
-    setOriginCoords(scenario.origin.coords);
-    setDestCoords(scenario.destination.coords);
-    runRouteCalculation({
+    setResolvedOriginCoords(scenario.origin.coords);
+    setResolvedDestCoords(scenario.destination.coords);
+    setErrorMessage(null);
+
+    executeRouteCalculation({
       origin: scenario.origin.coords,
       dest: scenario.destination.coords,
       scenarioId: scenario.id
@@ -241,22 +278,26 @@ export default function App() {
   const handleSelectOriginPlace = (place: PlaceResult) => {
     setActiveScenarioId(null);
     setOriginText(place.name);
-    setOriginCoords(place.coords);
+    setResolvedOriginCoords(place.coords);
+    setErrorMessage(null);
   };
 
   const handleSelectDestinationPlace = (place: PlaceResult) => {
     setActiveScenarioId(null);
     setDestinationText(place.name);
-    setDestCoords(place.coords);
+    setResolvedDestCoords(place.coords);
+    setErrorMessage(null);
   };
 
-  // Handle Map Click to set custom point
+  // Handle Map Click to set custom destination
   const handleMapClick = (coords: [number, number]) => {
     setActiveScenarioId(null);
-    setDestCoords(coords);
+    setResolvedDestCoords(coords);
     setDestinationText(`Pinned Location (${coords[0].toFixed(4)}, ${coords[1].toFixed(4)})`);
-    runRouteCalculation({
-      origin: originCoords,
+    setErrorMessage(null);
+
+    executeRouteCalculation({
+      origin: resolvedOriginCoords,
       dest: coords,
       scenarioId: undefined
     });
@@ -266,56 +307,103 @@ export default function App() {
   const handleChangeOrigin = (val: string) => {
     setActiveScenarioId(null);
     setOriginText(val);
+    if (errorMessage) setErrorMessage(null);
   };
 
   const handleChangeDestination = (val: string) => {
     setActiveScenarioId(null);
     setDestinationText(val);
+    if (errorMessage) setErrorMessage(null);
   };
 
-  // Reset search / back to inputs
+  // Reset / Modify Search
   const handleNewSearch = () => {
     setComparison(null);
-    setIsSimulating(false);
+    setSimulationMode(false);
+    setIsSimPlaying(false);
+    setSimulationPosition(null);
+    setErrorMessage(null);
   };
 
-  // Drive Simulation Loop
+  // ---------------- SIMULATION LOGIC: Controlled by user (NO AUTOPLAY) ----------------
+  const currentRouteCoords = comparison
+    ? (selectedRouteType === 'SAFE' ? comparison.safe.coordinates : comparison.fastest.coordinates)
+    : [];
+
+  const handleEnterSimulation = () => {
+    setSimulationMode(true);
+    setIsSimPlaying(false); // DO NOT AUTOPLAY! Wait for user to click Start
+    setSimulationIndex(0);
+    if (currentRouteCoords.length > 0) {
+      setSimulationPosition(currentRouteCoords[0]);
+    }
+  };
+
+  const handleStartSimulation = () => {
+    setIsSimPlaying(true);
+  };
+
+  const handlePauseSimulation = () => {
+    setIsSimPlaying(false);
+    if (simulationTimerRef.current) {
+      clearInterval(simulationTimerRef.current);
+      simulationTimerRef.current = null;
+    }
+  };
+
+  const handleStopSimulation = () => {
+    setIsSimPlaying(false);
+    setSimulationMode(false);
+    setSimulationIndex(0);
+    setSimulationPosition(null);
+    if (simulationTimerRef.current) {
+      clearInterval(simulationTimerRef.current);
+      simulationTimerRef.current = null;
+    }
+  };
+
+  // Animation frame / interval execution ONLY when isSimPlaying === true
   useEffect(() => {
-    if (!isSimulating || !comparison) {
-      if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
-      setSimulationPosition(null);
+    if (!simulationMode || !isSimPlaying || currentRouteCoords.length === 0) {
+      if (simulationTimerRef.current) {
+        clearInterval(simulationTimerRef.current);
+        simulationTimerRef.current = null;
+      }
       return;
     }
 
-    const routeCoords =
-      selectedRouteType === 'SAFE'
-        ? comparison.safe.coordinates
-        : comparison.fastest.coordinates;
-
-    if (routeCoords.length === 0) return;
-
-    let index = 0;
-    setSimulationIndex(0);
-    setSimulationPosition(routeCoords[0]);
-
     simulationTimerRef.current = setInterval(() => {
-      index += 1;
-      if (index >= routeCoords.length) {
-        setIsSimulating(false);
-        setSimulationPosition(null);
-        clearInterval(simulationTimerRef.current);
-      } else {
-        setSimulationIndex(index);
-        setSimulationPosition(routeCoords[index]);
-      }
+      setSimulationIndex((prev) => {
+        const next = prev + 1;
+        if (next >= currentRouteCoords.length) {
+          setIsSimPlaying(false);
+          if (simulationTimerRef.current) {
+            clearInterval(simulationTimerRef.current);
+            simulationTimerRef.current = null;
+          }
+          return prev;
+        }
+        setSimulationPosition(currentRouteCoords[next]);
+        return next;
+      });
     }, 280);
 
     return () => {
+      if (simulationTimerRef.current) {
+        clearInterval(simulationTimerRef.current);
+        simulationTimerRef.current = null;
+      }
+    };
+  }, [simulationMode, isSimPlaying, currentRouteCoords]);
+
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
       if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
     };
-  }, [isSimulating, selectedRouteType]);
+  }, []);
 
-  // Handle Citizen Report Submission with live validation feedback
+  // Handle Citizen Report Submission
   const handleSubmitReport = async (reportData: {
     city: CityId;
     location: [number, number];
@@ -342,7 +430,6 @@ export default function App() {
           setCitizenReports((prev) => [responseData.report, ...prev]);
         }
       } else {
-        // Fallback local injection
         const newHazard: HazardZone = {
           id: `hazard-local-${Date.now()}`,
           city: reportData.city,
@@ -368,58 +455,51 @@ export default function App() {
             confidence: 89,
             estimatedSeverity: newHazard.severity,
             estimatedWaterDepthCm: reportData.waterDepthCm,
-            indicators: ['Surface ponding reported by citizen submission'],
-            analysisSource: 'FALLBACK_HEURISTIC'
+            reasoning: 'Verified flood hazard recorded into live telemetry layer.'
           }
         };
       }
 
-      // Recalculate routes factoring in new hazard
-      setTimeout(() => {
-        runRouteCalculation();
-      }, 250);
+      // Recalculate route to reflect new hazard
+      executeRouteCalculation({
+        origin: resolvedOriginCoords,
+        dest: resolvedDestCoords,
+        scenarioId: undefined
+      });
 
       return responseData;
-    } catch {
-      runRouteCalculation();
-      return {
-        success: true,
-        validation: {
-          isFlooded: true,
-          confidence: 85,
-          estimatedSeverity: 'HIGH',
-          estimatedWaterDepthCm: reportData.waterDepthCm,
-          indicators: ['Citizen verified ponding record'],
-          analysisSource: 'FALLBACK_HEURISTIC'
-        }
-      };
+    } catch (err) {
+      console.error('Report submission failed:', err);
     }
   };
 
-  // Reset to initial seed data
   const handleResetData = async () => {
     setHazards(INITIAL_HAZARDS);
     try {
       await fetch('/api/reset-hazards', { method: 'POST' });
     } catch {}
-    runRouteCalculation();
+    executeRouteCalculation({
+      origin: resolvedOriginCoords,
+      dest: resolvedDestCoords,
+      scenarioId: activeScenarioId || undefined
+    });
   };
 
-  const cityMeta = CITY_CENTERS[currentCity] || CITY_CENTERS.bengaluru;
+  const cityMeta = CITIES[currentCity] || CITIES.bengaluru;
 
   return (
     <div className="relative w-full h-screen overflow-hidden flex flex-col bg-gray-50 text-gray-900 font-sans selection:bg-emerald-100 selection:text-emerald-900">
-      {/* Slim Top Navbar */}
+      {/* Top Navbar with canonical City selection */}
       <Navbar
         currentCity={currentCity}
-        onSelectCity={setCurrentCity}
+        onSelectCity={handleSelectCity}
         onOpenReportModal={() => setIsReportModalOpen(true)}
         onResetData={handleResetData}
       />
 
       {/* Main Map Canvas Area (Full Viewport Height) */}
       <div className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden">
-        {/* Full-bleed interactive Map */}
+        {/* Full-bleed Leaflet Map */}
         <Map
           center={cityMeta.center}
           zoom={cityMeta.zoom}
@@ -429,8 +509,8 @@ export default function App() {
           safeRoute={comparison?.safe || null}
           selectedRouteType={selectedRouteType}
           onSelectRouteType={setSelectedRouteType}
-          origin={{ name: originText, coords: originCoords }}
-          destination={{ name: destinationText, coords: destCoords }}
+          origin={{ name: originText, coords: resolvedOriginCoords }}
+          destination={{ name: destinationText, coords: resolvedDestCoords }}
           onMapClick={handleMapClick}
           simulationPosition={simulationPosition}
           showHazards={showHazards}
@@ -451,13 +531,20 @@ export default function App() {
             onSelectScenario={handleSelectScenario}
             onSearchRoute={handleSearchRoute}
             isLoading={isLoading}
+            errorMessage={errorMessage}
             comparison={comparison}
             selectedRouteType={selectedRouteType}
             onSelectRouteType={setSelectedRouteType}
             selectedVehicle={selectedVehicle}
             onSelectVehicle={setSelectedVehicle}
-            isSimulating={isSimulating}
-            onToggleSimulation={() => setIsSimulating((s) => !s)}
+            simulationMode={simulationMode}
+            isSimPlaying={isSimPlaying}
+            simulationStep={simulationIndex}
+            totalSteps={currentRouteCoords.length}
+            onEnterSimulation={handleEnterSimulation}
+            onStartSimulation={handleStartSimulation}
+            onPauseSimulation={handlePauseSimulation}
+            onStopSimulation={handleStopSimulation}
             aiBriefing={aiBriefing}
             onNewSearch={handleNewSearch}
           />
@@ -467,6 +554,7 @@ export default function App() {
         <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
           {/* Toggle Flood Hazards */}
           <button
+            type="button"
             onClick={() => setShowHazards((prev) => !prev)}
             className={`px-3 py-2 rounded-xl text-xs font-semibold shadow-md border transition-colors flex items-center gap-1.5 cursor-pointer ${
               showHazards
@@ -479,59 +567,38 @@ export default function App() {
             <span className="hidden sm:inline">Flood Hazards</span>
           </button>
 
-          {/* Map Tile Theme Toggle */}
+          {/* Toggle Dark/Street Theme */}
           <button
-            onClick={() => setMapTileTheme((t) => (t === 'dark' ? 'streets' : 'dark'))}
-            className="px-3 py-2 rounded-xl bg-white text-gray-800 hover:bg-gray-50 border border-gray-200 shadow-md text-xs font-semibold transition-colors flex items-center gap-1.5 cursor-pointer"
-            title="Toggle Street Map vs Satellite Dark"
+            type="button"
+            onClick={() => setMapTileTheme((t) => (t === 'streets' ? 'dark' : 'streets'))}
+            className="p-2 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 shadow-md text-xs font-medium cursor-pointer"
+            title="Toggle Map Basemap"
           >
-            <Layers className="w-3.5 h-3.5 text-gray-600" />
-            <span className="hidden sm:inline">{mapTileTheme === 'dark' ? 'Streets' : 'Dark'}</span>
+            <Layers className="w-4 h-4" />
           </button>
         </div>
-
-        {/* Drive Simulation Floating Active HUD */}
-        {isSimulating && (
-          <div className="absolute bottom-6 left-1/2 transform -translate-x-1/2 z-30 bg-white/95 border border-gray-300 shadow-xl px-4 py-2.5 rounded-full flex items-center gap-4 text-xs font-medium">
-            <div className="flex items-center gap-2">
-              <span className="w-2.5 h-2.5 rounded-full bg-emerald-600 animate-pulse"></span>
-              <span className="text-gray-900 font-semibold">
-                Simulating {selectedRouteType === 'SAFE' ? 'Safe Route' : 'Fastest Route'}
-              </span>
-              <span className="text-gray-400">·</span>
-              <span className="text-gray-500">
-                Step {simulationIndex + 1} of{' '}
-                {(selectedRouteType === 'SAFE'
-                  ? comparison?.safe.coordinates.length
-                  : comparison?.fastest.coordinates.length) || 0}
-              </span>
-            </div>
-            <button
-              onClick={() => setIsSimulating(false)}
-              className="px-2.5 py-1 rounded-full bg-red-100 hover:bg-red-200 text-red-800 font-semibold cursor-pointer text-[11px]"
-            >
-              Stop
-            </button>
-          </div>
-        )}
       </div>
 
-      {/* Citizen Hazard Reporting Modal */}
-      <CitizenReportModal
-        isOpen={isReportModalOpen}
-        onClose={() => setIsReportModalOpen(false)}
-        city={currentCity}
-        defaultLocation={originCoords}
-        onSubmitReport={handleSubmitReport}
-      />
+      {/* Citizen Report Modal */}
+      {isReportModalOpen && (
+        <CitizenReportModal
+          city={currentCity}
+          defaultLocation={cityMeta.center}
+          isOpen={isReportModalOpen}
+          onClose={() => setIsReportModalOpen(false)}
+          onSubmitReport={handleSubmitReport}
+        />
+      )}
 
-      {/* Monitored Hazards Modal */}
-      <HazardsListModal
-        isOpen={isHazardsListOpen}
-        onClose={() => setIsHazardsListOpen(false)}
-        hazards={hazards.filter((h) => h.city === currentCity)}
-        cityName={cityMeta.name}
-      />
+      {/* Hazards List Modal */}
+      {isHazardsListOpen && (
+        <HazardsListModal
+          cityName={cityMeta.name}
+          hazards={hazards.filter((h) => h.city === currentCity)}
+          isOpen={isHazardsListOpen}
+          onClose={() => setIsHazardsListOpen(false)}
+        />
+      )}
     </div>
   );
 }
