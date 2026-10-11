@@ -1,8 +1,8 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, ScanCommand, GetCommand } from '@aws-sdk/lib-dynamodb';
-import { HazardZone, CityId } from '../../types';
-import { INITIAL_HAZARDS } from '../../data/seedHazards';
-import { logStructured } from '../utils/logger';
+import type { HazardZone, CityId } from '../../types/index.ts';
+import { INITIAL_HAZARDS } from '../../data/seedHazards.ts';
+import { logStructured } from '../utils/logger.ts';
 
 export interface HazardRepository {
   getActiveHazards(cityId?: string): Promise<HazardZone[]>;

@@ -1,5 +1,5 @@
-import { APIGatewayEvent, APIGatewayResponse } from '../types/api';
-import { getHazardRepository } from '../repositories/hazardRepository';
+import { APIGatewayEvent, APIGatewayResponse } from '../types/api.ts';
+import { getHazardRepository } from '../repositories/hazardRepository.ts';
 
 export async function handleGetHazards(cityId?: string) {
   const hazardRepo = getHazardRepository();

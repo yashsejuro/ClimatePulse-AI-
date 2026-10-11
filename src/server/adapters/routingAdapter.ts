@@ -1,6 +1,6 @@
-import { HazardZone, RouteComparisonResponse, VehicleProfile } from '../../types';
-import { calculateDualRoutes } from '../../services/routingService';
-import { VEHICLE_PROFILES } from '../../data/seedHazards';
+import { HazardZone, RouteComparisonResponse, VehicleProfile } from '../../types/index.ts';
+import { calculateDualRoutes } from '../../services/routingService.ts';
+import { VEHICLE_PROFILES } from '../../data/seedHazards.ts';
 
 export interface RouteCalculationParams {
   origin: [number, number];

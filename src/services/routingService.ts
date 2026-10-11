@@ -1,5 +1,5 @@
-import { HazardZone, RouteOption, RouteComparisonResponse, VehicleProfile, IntersectedHazard } from '../types';
-import { CITY_VIEWBOXES } from './geocodingService';
+import type { HazardZone, RouteOption, RouteComparisonResponse, VehicleProfile, IntersectedHazard } from '../types/index.ts';
+import { CITY_VIEWBOXES } from './geocodingService.ts';
 
 /**
  * Calculates distance between two coordinates in meters using Haversine formula

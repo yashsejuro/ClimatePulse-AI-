@@ -1,8 +1,8 @@
-import { APIGatewayEvent, APIGatewayResponse, ReportRequestBody } from '../types/api';
-import { getBedrockService } from '../services/bedrockService';
-import { getHazardRepository } from '../repositories/hazardRepository';
-import { getReportRepository } from '../repositories/reportRepository';
-import { CitizenReport, HazardZone } from '../../types';
+import { APIGatewayEvent, APIGatewayResponse, ReportRequestBody } from '../types/api.ts';
+import { getBedrockService } from '../services/bedrockService.ts';
+import { getHazardRepository } from '../repositories/hazardRepository.ts';
+import { getReportRepository } from '../repositories/reportRepository.ts';
+import { CitizenReport, HazardZone } from '../../types/index.ts';
 
 export async function handleGetReports(cityId?: string) {
   const reportRepo = getReportRepository();

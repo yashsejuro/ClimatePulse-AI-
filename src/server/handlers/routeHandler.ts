@@ -1,9 +1,9 @@
-import { APIGatewayEvent, APIGatewayResponse, RouteRequestBody } from '../types/api';
-import { getHazardRepository } from '../repositories/hazardRepository';
-import { getWeatherAdapter } from '../adapters/weatherAdapter';
-import { getRoutingAdapter } from '../adapters/routingAdapter';
-import { CityId } from '../../types';
-import { logStructured } from '../utils/logger';
+import { APIGatewayEvent, APIGatewayResponse, RouteRequestBody } from '../types/api.ts';
+import { getHazardRepository } from '../repositories/hazardRepository.ts';
+import { getWeatherAdapter } from '../adapters/weatherAdapter.ts';
+import { getRoutingAdapter } from '../adapters/routingAdapter.ts';
+import { CityId } from '../../types/index.ts';
+import { logStructured } from '../utils/logger.ts';
 
 export async function handleRouteCalculation(body: RouteRequestBody) {
   const startTime = Date.now();

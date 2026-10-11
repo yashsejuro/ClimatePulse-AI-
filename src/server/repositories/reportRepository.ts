@@ -1,7 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
-import { CitizenReport } from '../../types';
-import { logStructured } from '../utils/logger';
+import type { CitizenReport } from '../../types/index.ts';
+import { logStructured } from '../utils/logger.ts';
 
 export interface ReportRepository {
   getReports(cityId?: string): Promise<CitizenReport[]>;

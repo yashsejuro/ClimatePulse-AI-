@@ -1,4 +1,4 @@
-import { CityId, HazardZone, CitizenReport, RouteComparisonResponse, CityWeather } from '../../types';
+import type { CityId, HazardZone, CitizenReport, RouteComparisonResponse, CityWeather } from '../../types/index.ts';
 
 export interface APIGatewayEvent {
   httpMethod: string;

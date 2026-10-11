@@ -1,4 +1,4 @@
-import { CityId, CityWeather } from '../types';
+import type { CityId, CityWeather } from '../types/index.ts';
 
 export interface CityConfig {
   id: CityId;

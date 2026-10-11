@@ -1,5 +1,5 @@
-import { CityId, CityWeather } from '../../types';
-import { INITIAL_WEATHER } from '../../data/seedHazards';
+import type { CityId, CityWeather } from '../../types/index.ts';
+import { INITIAL_WEATHER } from '../../data/seedHazards.ts';
 
 export interface WeatherProvider {
   getWeather(city: CityId): Promise<CityWeather>;

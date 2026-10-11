@@ -1,4 +1,4 @@
-import { HazardZone, PresetScenario, VehicleProfile, CityWeather } from '../types';
+import type { HazardZone, PresetScenario, VehicleProfile, CityWeather } from '../types/index.ts';
 
 export const VEHICLE_PROFILES: VehicleProfile[] = [
   {

@@ -1,7 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
-import { BedrockValidationResult, BedrockBriefingResult } from '../types/api';
-import { logStructured } from '../utils/logger';
+import type { BedrockValidationResult, BedrockBriefingResult } from '../types/api.ts';
+import { logStructured } from '../utils/logger.ts';
 
 export class BedrockService {
   private client: BedrockRuntimeClient | null = null;

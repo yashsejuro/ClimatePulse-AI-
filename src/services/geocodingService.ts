@@ -1,5 +1,5 @@
-import { CityId } from '../types';
-import { CITIES } from '../data/cities';
+import type { CityId } from '../types/index.ts';
+import { CITIES } from '../data/cities.ts';
 
 export interface PlaceResult {
   name: string;

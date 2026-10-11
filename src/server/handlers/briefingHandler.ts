@@ -1,5 +1,5 @@
-import { APIGatewayEvent, APIGatewayResponse, BriefingRequestBody } from '../types/api';
-import { getBedrockService } from '../services/bedrockService';
+import { APIGatewayEvent, APIGatewayResponse, BriefingRequestBody } from '../types/api.ts';
+import { getBedrockService } from '../services/bedrockService.ts';
 
 export async function handleGenerateBriefing(body: BriefingRequestBody) {
   const { fastestHazards, timeDelta = 6, distanceDelta = 2.4, vehicleName = 'Sedan' } = body;
