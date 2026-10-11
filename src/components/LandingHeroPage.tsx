@@ -524,56 +524,81 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
               </div>
 
               {/* Simplified Schematic Track */}
-              <div className="relative py-3 px-2 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center justify-between text-xs font-mono overflow-x-auto">
+              <div className="relative pt-6 pb-4 px-3 sm:px-5 bg-slate-900/90 rounded-xl border border-slate-800 flex items-center justify-between text-xs font-mono">
                 {/* Origin */}
-                <div className="flex items-center gap-1.5 shrink-0">
-                  <div className="w-3 h-3 rounded-full bg-emerald-500 ring-2 ring-emerald-500/30" />
+                <div className="flex items-center gap-1.5 shrink-0 z-10">
+                  <div className="w-3.5 h-3.5 rounded-full bg-emerald-500 ring-4 ring-emerald-500/20 shadow-xs" />
                   <span className="text-slate-300 font-bold text-[11px]">START</span>
                 </div>
 
                 {/* Trajectory visualization */}
-                <div className="flex-1 mx-4 sm:mx-8 relative py-3 flex items-center justify-center min-w-[200px]">
+                <div className="flex-1 mx-3 sm:mx-8 relative h-16 sm:h-20 flex items-center justify-center min-w-[200px]">
+                  {/* Top Badge: Elevated Dry Bypass */}
+                  <div className="absolute top-0 inset-x-0 flex justify-center z-20">
+                    <div
+                      className={`px-2.5 py-0.5 rounded-full text-[9px] sm:text-[10px] font-bold tracking-wider uppercase transition-all flex items-center gap-1.5 ${
+                        activeRoutePreview === 'SAFE'
+                          ? 'bg-emerald-950/90 text-emerald-300 border border-emerald-500/40 shadow-xs'
+                          : 'bg-slate-900/80 text-emerald-400/50 border border-emerald-600/20'
+                      }`}
+                    >
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-400" />
+                      <span>Elevated Dry Bypass (+{activeCorridor.deltaMin} min)</span>
+                    </div>
+                  </div>
+
+                  {/* Safe Bypass Arc SVG Curve */}
+                  <svg
+                    className="absolute inset-x-0 top-3.5 sm:top-4 w-full h-8 sm:h-9 pointer-events-none"
+                    viewBox="0 0 100 24"
+                    preserveAspectRatio="none"
+                  >
+                    <path
+                      d="M 1 23 Q 50 2, 99 23"
+                      fill="none"
+                      stroke={activeRoutePreview === 'SAFE' ? '#34d399' : '#047857'}
+                      strokeWidth={activeRoutePreview === 'SAFE' ? '2.5' : '1.5'}
+                      strokeDasharray={activeRoutePreview === 'SAFE' ? 'none' : '4 3'}
+                      opacity={activeRoutePreview === 'SAFE' ? 1 : 0.35}
+                      className="transition-all duration-200"
+                    />
+                  </svg>
+
                   {/* Direct Fastest Line (Red Dashed) */}
-                  <div
-                    className={`absolute inset-x-0 h-0.5 border-t-2 border-dashed transition-all ${
-                      activeRoutePreview === 'FASTEST'
-                        ? 'border-red-500 opacity-100'
-                        : 'border-red-500/40 opacity-40'
-                    }`}
-                  />
+                  <div className="absolute inset-x-0 bottom-3.5 sm:bottom-4 h-0.5 flex items-center">
+                    <div
+                      className={`w-full border-t-2 border-dashed transition-all ${
+                        activeRoutePreview === 'FASTEST'
+                          ? 'border-red-500 opacity-100 shadow-sm'
+                          : 'border-red-500/40 opacity-40'
+                      }`}
+                    />
+                  </div>
 
                   {/* Hazard Zone Bubble (Center) */}
-                  <div className="relative z-10 flex flex-col items-center">
-                    <div className="px-3 py-1 rounded-full bg-red-950/90 border border-red-600 text-red-200 text-[10px] font-bold flex items-center gap-1 shadow-md">
-                      <AlertTriangle className="w-3 h-3 text-red-400 shrink-0" />
-                      <span>{activeCorridor.hazardName}</span>
-                      <span className="text-red-400 bg-red-900/60 px-1.5 py-0.2 rounded font-mono">
+                  <div className="relative z-10 mt-6 sm:mt-7 flex flex-col items-center">
+                    <div
+                      className={`px-2.5 sm:px-3 py-1 rounded-full border text-[10px] sm:text-[11px] font-bold flex items-center gap-1.5 shadow-md transition-all ${
+                        activeRoutePreview === 'FASTEST'
+                          ? 'bg-red-950 text-red-200 border-red-500 ring-2 ring-red-500/20'
+                          : 'bg-red-950/90 text-red-300 border-red-600/80'
+                      }`}
+                    >
+                      <AlertTriangle className="w-3.5 h-3.5 text-red-400 shrink-0" />
+                      <span className="truncate max-w-[130px] sm:max-w-[220px]">
+                        {activeCorridor.hazardName}
+                      </span>
+                      <span className="text-red-300 bg-red-900/70 border border-red-700/50 px-1.5 py-0.5 rounded font-mono text-[9px] sm:text-[10px]">
                         {activeCorridor.waterDepthCm} cm
                       </span>
                     </div>
                   </div>
-
-                  {/* Safe Bypass Arc (Emerald Solid) */}
-                  <div
-                    className={`absolute inset-x-0 -top-2.5 h-6 rounded-t-full border-t-2 border-l-2 border-r-2 transition-all ${
-                      activeRoutePreview === 'SAFE'
-                        ? 'border-emerald-400 opacity-100 shadow-sm'
-                        : 'border-emerald-600/30 opacity-30'
-                    }`}
-                  />
-                  <div
-                    className={`absolute -top-5 text-[9px] font-bold text-emerald-400 tracking-wider transition-opacity ${
-                      activeRoutePreview === 'SAFE' ? 'opacity-100' : 'opacity-40'
-                    }`}
-                  >
-                    ELEVATED DRY BYPASS (+{activeCorridor.deltaMin} MIN)
-                  </div>
                 </div>
 
                 {/* Destination */}
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex items-center gap-1.5 shrink-0 z-10">
                   <span className="text-slate-300 font-bold text-[11px]">DEST</span>
-                  <div className="w-3 h-3 rounded-full bg-blue-500 ring-2 ring-blue-500/30" />
+                  <div className="w-3.5 h-3.5 rounded-full bg-blue-500 ring-4 ring-blue-500/20 shadow-xs" />
                 </div>
               </div>
             </div>
