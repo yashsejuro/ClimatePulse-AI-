@@ -22,6 +22,14 @@ import {
 } from '../data/seedHazards';
 import { resolveLocation, PlaceResult } from '../services/geocodingService';
 import { detectCurrentUserLocation } from '../services/locationService';
+import { detectHazardIntersections } from '../services/routingService';
+import { AlertTriangle, X } from 'lucide-react';
+
+interface HazardRouteAlert {
+  id: string;
+  hazard: HazardZone;
+  timestamp: string;
+}
 
 interface DashboardProps {
   onNavigateHome?: () => void;
@@ -110,6 +118,66 @@ export const Dashboard: React.FC<DashboardProps> = ({
   const [locationToast, setLocationToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHazards, setShowHazards] = useState(true);
   const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('streets');
+
+  // Real-Time Hazard Alert State & Tracking Refs
+  const [realtimeHazardAlert, setRealtimeHazardAlert] = useState<HazardRouteAlert | null>(null);
+  const knownHazardIdsRef = React.useRef<Set<string>>(new Set(INITIAL_HAZARDS.map((h) => h.id)));
+  const alertedHazardIdsRef = React.useRef<Set<string>>(new Set());
+
+  // Trigger browser alert and in-app real-time notification
+  const triggerHazardIntersectionAlert = (hazard: HazardZone) => {
+    if (alertedHazardIdsRef.current.has(hazard.id)) return;
+    alertedHazardIdsRef.current.add(hazard.id);
+
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(`🚨 ClimatePulse Flood Warning: ${hazard.name}`, {
+          body: `New ${hazard.waterDepthCm}cm flood hazard detected on your route at ${hazard.roadName}.`,
+          icon: '/favicon.ico'
+        });
+      }
+    } catch {
+      // Non-fatal
+    }
+
+    setRealtimeHazardAlert({
+      id: hazard.id,
+      hazard,
+      timestamp: new Date().toLocaleTimeString()
+    });
+  };
+
+  // Simulate a newly reported high-severity hazard along the user's active route
+  const handleSimulateHazardOnRoute = () => {
+    if (!comparison) return;
+    const activeRoute = selectedRouteType === 'SAFE' && comparison.safe ? comparison.safe : comparison.fastest;
+    if (!activeRoute || activeRoute.coordinates.length < 3) return;
+
+    const midIndex = Math.floor(activeRoute.coordinates.length / 2);
+    const midPoint = activeRoute.coordinates[midIndex];
+
+    const simulatedHazard: HazardZone = {
+      id: `hazard-live-${Date.now()}`,
+      city: currentCity,
+      name: `Sudden Flood Inundation along ${destinationText || 'Active Route'}`,
+      roadName: 'Active Travel Corridor',
+      center: [midPoint[0], midPoint[1]],
+      radiusMeters: 450,
+      severity: 'CRITICAL',
+      waterDepthCm: 52,
+      rainfallIntensityMmPerHour: 48,
+      riskWeight: 0.95,
+      source: 'OFFICIAL_SENSOR',
+      status: 'ACTIVE',
+      verified: true,
+      reportedAt: 'Just now',
+      notes: 'Real-time telemetry reported flash overflow exceeding 50 cm. Immediate alert dispatched.'
+    };
+
+    setHazards((prev) => [simulatedHazard, ...prev]);
+    knownHazardIdsRef.current.add(simulatedHazard.id);
+    triggerHazardIntersectionAlert(simulatedHazard);
+  };
 
   // Handle live user GPS location detection
   const handleDetectUserLocation = async () => {
@@ -230,6 +298,56 @@ export const Dashboard: React.FC<DashboardProps> = ({
       .catch(() => {});
   }, [currentCity]);
 
+  // Synchronize known hazard IDs
+  useEffect(() => {
+    hazards.forEach((h) => knownHazardIdsRef.current.add(h.id));
+  }, [hazards]);
+
+  // Real-time polling: Check for newly reported hazards and test against user's active route
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/hazards?city=${currentCity}`);
+        if (!res.ok) return;
+        const freshHazards: HazardZone[] = await res.json();
+        if (!Array.isArray(freshHazards)) return;
+
+        const newlyReported = freshHazards.filter((h) => !knownHazardIdsRef.current.has(h.id));
+        if (newlyReported.length > 0) {
+          newlyReported.forEach((h) => knownHazardIdsRef.current.add(h.id));
+          setHazards((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const toAdd = newlyReported.filter((h) => !existingIds.has(h.id));
+            return toAdd.length > 0 ? [...toAdd, ...prev] : prev;
+          });
+
+          // If the user has an active route calculated, check if the new hazard intersects it
+          if (comparison) {
+            const activeRoute = selectedRouteType === 'SAFE' && comparison.safe ? comparison.safe : comparison.fastest;
+            for (const newHazard of newlyReported) {
+              const isHighSeverity =
+                newHazard.severity === 'CRITICAL' ||
+                newHazard.severity === 'HIGH' ||
+                newHazard.waterDepthCm >= 30;
+
+              if (isHighSeverity) {
+                const hits = detectHazardIntersections(activeRoute.coordinates, [newHazard]);
+                if (hits.length > 0) {
+                  triggerHazardIntersectionAlert(newHazard);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-fatal background polling failure
+      }
+    }, 6000);
+
+    return () => clearInterval(pollInterval);
+  }, [currentCity, comparison, selectedRouteType]);
+
   // Route calculation execution
   const executeRouteCalculation = async (params: {
     origin: [number, number];
@@ -251,6 +369,13 @@ export const Dashboard: React.FC<DashboardProps> = ({
       scenarioId: params.scenarioId,
       city: currentCity
     };
+
+    console.log('[executeRouteCalculation] Request:', {
+      origin: params.origin,
+      dest: params.dest,
+      scenarioId: params.scenarioId,
+      city: currentCity
+    });
 
     try {
       const response = await fetch('/api/route', {
@@ -274,6 +399,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
         return;
       }
 
+      console.log('[executeRouteCalculation] Response received successfully:', {
+        fastestDist: data.fastest.distanceKm,
+        fastestDuration: data.fastest.durationMin,
+        safeRouteFound: data.safeRouteFound
+      });
+
       setComparison(data);
       if (data.weather) {
         setWeather(data.weather);
@@ -283,6 +414,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
       if (controller.signal.aborted || err?.name === 'AbortError' || requestId !== latestRequestIdRef.current) {
         return;
       }
+      console.warn('[executeRouteCalculation] Error:', err?.message);
       setErrorMessage(err?.message || 'Routing service unavailable');
       setComparison(null);
       setSelectedRouteType('SAFE');
@@ -545,6 +677,60 @@ export const Dashboard: React.FC<DashboardProps> = ({
         </div>
       )}
 
+      {/* Real-Time Hazard Alert Banner (High Severity Route Collision Warning) */}
+      {realtimeHazardAlert && (
+        <div
+          role="alert"
+          className="fixed top-18 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl bg-red-600 text-white rounded-2xl p-4 shadow-2xl border-2 border-red-300 animate-in fade-in slide-in-from-top-4 flex items-start gap-3.5"
+        >
+          <div className="p-2 bg-red-700/80 rounded-xl shrink-0 mt-0.5 animate-pulse">
+            <AlertTriangle className="w-6 h-6 text-yellow-300" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-white/20 text-white text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full">
+                Real-Time Warning
+              </span>
+              <span className="text-xs text-red-100 font-mono">{realtimeHazardAlert.timestamp}</span>
+            </div>
+            <h4 className="text-sm font-bold text-white mt-1 leading-snug">
+              Active Route Intersects Newly Reported {realtimeHazardAlert.hazard.severity} Flood Zone!
+            </h4>
+            <p className="text-xs text-red-100 mt-1">
+              <strong className="text-white">{realtimeHazardAlert.hazard.name}</strong> ({realtimeHazardAlert.hazard.waterDepthCm} cm water depth). Driving through this corridor risks engine lock and stall.
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={() => {
+                  setRealtimeHazardAlert(null);
+                  executeRouteCalculation({
+                    origin: resolvedOriginCoords,
+                    dest: resolvedDestCoords,
+                    scenarioId: undefined
+                  });
+                }}
+                className="px-3 py-1.5 bg-white text-red-700 hover:bg-red-50 text-xs font-bold rounded-lg shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                Recalculate Route
+              </button>
+              <button
+                onClick={() => setRealtimeHazardAlert(null)}
+                className="px-3 py-1.5 bg-red-700/60 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => setRealtimeHazardAlert(null)}
+            className="text-red-200 hover:text-white p-1 rounded-lg hover:bg-red-700/50 cursor-pointer"
+            title="Close alert"
+          >
+            <X className="w-5 h-5" />
+          </button>
+        </div>
+      )}
+
       {/* Simple Clean Navbar */}
       <Navbar
         currentCity={currentCity}
@@ -610,9 +796,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             onSelectVehicle={setSelectedVehicle}
             onDetectLocation={handleDetectUserLocation}
             isDetectingLocation={isDetectingLocation}
-            weather={weather}
-            onRefreshWeather={() => fetchRealTimeWeather(resolvedOriginCoords, originText)}
-            isRefreshingWeather={isRefreshingWeather}
+            onSimulateHazardOnRoute={comparison ? handleSimulateHazardOnRoute : undefined}
           />
         </div>
       </div>

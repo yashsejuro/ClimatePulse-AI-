@@ -50,10 +50,10 @@ const PREVIEW_CORRIDORS: CorridorPreviewData[] = [
     hazardName: 'Silk Board Junction Underpass',
     waterDepthCm: 48,
     fastestMin: 25,
-    fastestKm: 12.7,
-    safeMin: 30,
-    safeKm: 15.4,
-    deltaMin: 5,
+    fastestKm: 17.9,
+    safeMin: 31,
+    safeKm: 22.1,
+    deltaMin: 6,
     fastestWarning: 'Severe stormwater drain overflow (~48 cm). 3 vehicles stalled. Exceeds sedan intake limit.',
     safeBypass: 'Diverts via BTM 2nd Stage & Hosur Elevated Expressway bypass. Zero flooded roads.'
   },
@@ -543,7 +543,7 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
                 </span>
                 <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-emerald-50 text-emerald-900 border border-emerald-200 font-medium">
                   <CheckCircle2 className="w-3 h-3 text-emerald-700" />
-                  <span>Avoids {activeCorridor.hazardName}</span>
+                  <span>Avoids 1 flooded road</span>
                 </span>
                 <span className="text-gray-500 text-[11px] hidden lg:inline">
                   &bull; Is saving {activeCorridor.deltaMin} minutes worth {activeCorridor.waterDepthCm} cm of water?

@@ -2,19 +2,21 @@ import type { CityId, CityWeather } from '../../types/index.ts';
 import { INITIAL_WEATHER } from '../../data/seedHazards.ts';
 
 export interface WeatherProvider {
-  getWeather(city: CityId): Promise<CityWeather>;
+  getWeather(city: CityId, coords?: [number, number], locationName?: string): Promise<CityWeather>;
+  getPrecipitationGrid(city: CityId, coords?: [number, number]): Promise<any>;
 }
 
 export class OpenMeteoWeatherAdapter implements WeatherProvider {
   private cache = new Map<string, { data: CityWeather; cachedAt: number }>();
   private readonly CACHE_TTL_MS = 15 * 60 * 1000; // 15 minutes
 
-  async getWeather(city: CityId): Promise<CityWeather> {
+  async getWeather(city: CityId, customCoords?: [number, number], locationName?: string): Promise<CityWeather> {
     const cityKey = (city || 'bengaluru').toLowerCase() as CityId;
     const defaultWeather = INITIAL_WEATHER[cityKey] || INITIAL_WEATHER.bengaluru;
 
+    const cacheKey = customCoords ? `${cityKey}_${customCoords[0]}_${customCoords[1]}` : cityKey;
     // Check cache
-    const cached = this.cache.get(cityKey);
+    const cached = this.cache.get(cacheKey);
     if (cached && Date.now() - cached.cachedAt < this.CACHE_TTL_MS) {
       return cached.data;
     }
@@ -26,7 +28,7 @@ export class OpenMeteoWeatherAdapter implements WeatherProvider {
       chennai: [13.0827, 80.2707]
     };
 
-    const coords = cityCoordinates[cityKey];
+    const coords = customCoords || cityCoordinates[cityKey];
     if (!coords) {
       return defaultWeather;
     }
@@ -42,11 +44,12 @@ export class OpenMeteoWeatherAdapter implements WeatherProvider {
 
         const resolved: CityWeather = {
           ...defaultWeather,
+          cityName: locationName || defaultWeather.cityName,
           temperatureC: Math.round(temp * 10) / 10,
           rainfallMmPerHour: Math.max(12, Math.round((rain + defaultWeather.rainfallMmPerHour) / 2 * 10) / 10)
         };
 
-        this.cache.set(cityKey, { data: resolved, cachedAt: Date.now() });
+        this.cache.set(cacheKey, { data: resolved, cachedAt: Date.now() });
         return resolved;
       }
     } catch {
@@ -54,6 +57,15 @@ export class OpenMeteoWeatherAdapter implements WeatherProvider {
     }
 
     return defaultWeather;
+  }
+
+  async getPrecipitationGrid(city: CityId, coords?: [number, number]): Promise<any> {
+    const weather = await this.getWeather(city, coords);
+    return {
+      city,
+      rainfallMmPerHour: weather.rainfallMmPerHour,
+      gridPoints: []
+    };
   }
 }
 
