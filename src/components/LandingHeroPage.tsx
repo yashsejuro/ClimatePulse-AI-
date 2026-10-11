@@ -17,6 +17,8 @@ import {
   Server,
   Layers,
   ChevronRight,
+  ChevronDown,
+  HelpCircle,
   Info
 } from 'lucide-react';
 import { CityId } from '../types';
@@ -113,15 +115,18 @@ const PREVIEW_CORRIDORS: CorridorPreviewData[] = [
 interface LandingHeroPageProps {
   onNavigateToDashboard: (city?: CityId, scenarioId?: string) => void;
   onOpenAwsArchitecture: () => void;
+  onPrefetchDashboard?: () => void;
 }
 
 export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
   onNavigateToDashboard,
-  onOpenAwsArchitecture
+  onOpenAwsArchitecture,
+  onPrefetchDashboard
 }) => {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [selectedCorridorIndex, setSelectedCorridorIndex] = useState(0);
   const [activeRoutePreview, setActiveRoutePreview] = useState<'FASTEST' | 'SAFE'>('SAFE');
+  const [openFaqIndex, setOpenFaqIndex] = useState<number | null>(0);
 
   const activeCorridor = PREVIEW_CORRIDORS[selectedCorridorIndex];
 
@@ -166,6 +171,13 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
               How it works
             </a>
             <a
+              href="#faq"
+              onClick={(e) => scrollToSection(e, 'faq')}
+              className="hover:text-gray-950 transition-colors cursor-pointer"
+            >
+              FAQ
+            </a>
+            <a
               href="#vehicle-clearance"
               onClick={(e) => scrollToSection(e, 'vehicle-clearance')}
               className="hover:text-gray-950 transition-colors cursor-pointer"
@@ -190,6 +202,9 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToDashboard()}
+              onMouseEnter={onPrefetchDashboard}
+              onFocus={onPrefetchDashboard}
+              onTouchStart={onPrefetchDashboard}
               className="text-gray-700 hover:text-gray-950 transition-colors cursor-pointer"
             >
               Open Dashboard
@@ -197,6 +212,9 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToDashboard()}
+              onMouseEnter={onPrefetchDashboard}
+              onFocus={onPrefetchDashboard}
+              onTouchStart={onPrefetchDashboard}
               className="px-3.5 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-medium shadow-xs transition-colors cursor-pointer"
             >
               Find a safer route
@@ -208,6 +226,7 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToDashboard()}
+              onTouchStart={onPrefetchDashboard}
               className="px-3 py-1.5 rounded-lg bg-emerald-600 text-white text-xs font-medium shadow-xs"
             >
               Dashboard
@@ -232,6 +251,13 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
               className="block py-1.5 text-gray-700 hover:text-gray-950"
             >
               How it works
+            </a>
+            <a
+              href="#faq"
+              onClick={(e) => scrollToSection(e, 'faq')}
+              className="block py-1.5 text-gray-700 hover:text-gray-950"
+            >
+              Frequently Asked Questions (FAQ)
             </a>
             <a
               href="#vehicle-clearance"
@@ -298,6 +324,9 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToDashboard()}
+              onMouseEnter={onPrefetchDashboard}
+              onFocus={onPrefetchDashboard}
+              onTouchStart={onPrefetchDashboard}
               className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-medium text-sm sm:text-base shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>Find a safer route</span>
@@ -556,6 +585,9 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
                 onClick={() =>
                   onNavigateToDashboard(activeCorridor.cityId, activeCorridor.scenarioId)
                 }
+                onMouseEnter={onPrefetchDashboard}
+                onFocus={onPrefetchDashboard}
+                onTouchStart={onPrefetchDashboard}
                 className="px-4 py-2 rounded-lg bg-emerald-600 hover:bg-emerald-700 text-white font-semibold flex items-center gap-1.5 shadow-xs transition-colors cursor-pointer shrink-0 self-start sm:self-auto"
               >
                 <span>Test in Live Map</span>
@@ -635,6 +667,134 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
             <p className="text-xs text-gray-600 leading-relaxed">
               Review travel time trade-offs (+minutes) against water depth to make a rational, safety-first choice.
             </p>
+          </div>
+        </div>
+
+        {/* ---------------------------------------------------- */}
+        {/* FREQUENTLY ASKED QUESTIONS (CLIMATE DATA & UPDATES) */}
+        {/* ---------------------------------------------------- */}
+        <div id="faq" className="mt-16 pt-12 border-t border-gray-200 scroll-mt-20">
+          <div className="max-w-2xl mx-auto text-center space-y-2 mb-8">
+            <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-emerald-800 text-[11px] font-bold uppercase tracking-wider">
+              <HelpCircle className="w-3.5 h-3.5 text-emerald-600" />
+              <span>FREQUENTLY ASKED QUESTIONS</span>
+            </div>
+            <h3 className="text-xl sm:text-2xl font-extrabold text-gray-950 tracking-tight">
+              How climate data is sourced and updated
+            </h3>
+            <p className="text-xs sm:text-sm text-gray-600">
+              Transparent, multi-source hydrological monitoring designed for hyper-local urban flood resilience.
+            </p>
+          </div>
+
+          <div className="max-w-3xl mx-auto space-y-3">
+            {/* FAQ 1 */}
+            <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-xs transition-colors">
+              <button
+                type="button"
+                onClick={() => setOpenFaqIndex(openFaqIndex === 0 ? null : 0)}
+                className="w-full py-4 px-5 flex items-center justify-between text-left text-xs sm:text-sm font-semibold text-gray-900 hover:bg-gray-50/70 transition-colors cursor-pointer"
+                aria-expanded={openFaqIndex === 0}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Droplets className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span>Where does ClimatePulse get its real-time weather and rainfall data?</span>
+                </span>
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${
+                    openFaqIndex === 0 ? 'rotate-180 text-emerald-600' : ''
+                  }`}
+                />
+              </button>
+              {openFaqIndex === 0 && (
+                <div className="px-5 pb-4 pt-1 text-xs text-gray-600 leading-relaxed border-t border-gray-100 bg-gray-50/30">
+                  <p>
+                    Rainfall intensity and atmospheric pressure are fetched from open meteorology feeds (Open-Meteo API and OpenWeatherMap). The backend tracks active precipitation rates (mm/h) and computes a Cumulative Rainfall Index (CRI) for each urban sector. This allows our risk engine to predict runoff accumulation in natural topographical depressions before surface pooling is reported manually.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* FAQ 2 */}
+            <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-xs transition-colors">
+              <button
+                type="button"
+                onClick={() => setOpenFaqIndex(openFaqIndex === 1 ? null : 1)}
+                className="w-full py-4 px-5 flex items-center justify-between text-left text-xs sm:text-sm font-semibold text-gray-900 hover:bg-gray-50/70 transition-colors cursor-pointer"
+                aria-expanded={openFaqIndex === 1}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Database className="w-4 h-4 text-purple-600 shrink-0" />
+                  <span>How are flood hazard zones and surveyed underpasses identified?</span>
+                </span>
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${
+                    openFaqIndex === 1 ? 'rotate-180 text-emerald-600' : ''
+                  }`}
+                />
+              </button>
+              {openFaqIndex === 1 && (
+                <div className="px-5 pb-4 pt-1 text-xs text-gray-600 leading-relaxed border-t border-gray-100 bg-gray-50/30">
+                  <p>
+                    Known vulnerable points—such as low-lying railway underpasses, canal bridges, and saucer depressions—are curated from official civic authorities (BBMP in Bengaluru, BMC in Mumbai, MCD in Delhi, GCC in Chennai) combined with OpenStreetMap topographical node surveys. Each zone includes baseline terrain elevation, historical maximum inundation depths, and municipal drainage discharge capacity.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* FAQ 3 */}
+            <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-xs transition-colors">
+              <button
+                type="button"
+                onClick={() => setOpenFaqIndex(openFaqIndex === 2 ? null : 2)}
+                className="w-full py-4 px-5 flex items-center justify-between text-left text-xs sm:text-sm font-semibold text-gray-900 hover:bg-gray-50/70 transition-colors cursor-pointer"
+                aria-expanded={openFaqIndex === 2}
+              >
+                <span className="flex items-center gap-2.5">
+                  <Clock className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>How frequently is flood and road safety data updated?</span>
+                </span>
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${
+                    openFaqIndex === 2 ? 'rotate-180 text-emerald-600' : ''
+                  }`}
+                />
+              </button>
+              {openFaqIndex === 2 && (
+                <div className="px-5 pb-4 pt-1 text-xs text-gray-600 leading-relaxed border-t border-gray-100 bg-gray-50/30">
+                  <p>
+                    Weather telemetry and precipitation gauges refresh every 15 minutes. Citizen waterlogging reports and verified field reports are streamed instantly to our AWS DynamoDB datastore. Active dashboard sessions poll for high-severity hazard updates every 30 seconds and alert drivers in real time if a newly reported waterlogging incident intersects their active route.
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {/* FAQ 4 */}
+            <div className="border border-gray-200 rounded-xl bg-white overflow-hidden shadow-xs transition-colors">
+              <button
+                type="button"
+                onClick={() => setOpenFaqIndex(openFaqIndex === 3 ? null : 3)}
+                className="w-full py-4 px-5 flex items-center justify-between text-left text-xs sm:text-sm font-semibold text-gray-900 hover:bg-gray-50/70 transition-colors cursor-pointer"
+                aria-expanded={openFaqIndex === 3}
+              >
+                <span className="flex items-center gap-2.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span>How are citizen reports verified against false alerts?</span>
+                </span>
+                <ChevronDown
+                  className={`w-4 h-4 text-gray-400 shrink-0 transition-transform duration-200 ${
+                    openFaqIndex === 3 ? 'rotate-180 text-emerald-600' : ''
+                  }`}
+                />
+              </button>
+              {openFaqIndex === 3 && (
+                <div className="px-5 pb-4 pt-1 text-xs text-gray-600 leading-relaxed border-t border-gray-100 bg-gray-50/30">
+                  <p>
+                    Reports submitted via the 'Report Flood' interface include location coordinates, estimated depth category, and optional visual evidence. Incoming reports pass through automated hydrological plausibility checks (correlating local rainfall rates with historical drainage capacity) and an AWS Bedrock vision validation pipeline to confirm water presence and vehicle submersion before broadcasting a warning.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       </section>
@@ -891,6 +1051,9 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
             <button
               type="button"
               onClick={() => onNavigateToDashboard()}
+              onMouseEnter={onPrefetchDashboard}
+              onFocus={onPrefetchDashboard}
+              onTouchStart={onPrefetchDashboard}
               className="w-full sm:w-auto px-6 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white font-medium text-sm sm:text-base shadow-xs transition-colors flex items-center justify-center gap-2 cursor-pointer"
             >
               <span>Open ClimatePulse Dashboard</span>
