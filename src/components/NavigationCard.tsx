@@ -41,6 +41,7 @@ interface NavigationCardProps {
   onSelectVehicle?: (vehicle: VehicleType) => void;
   onDetectLocation?: () => void;
   isDetectingLocation?: boolean;
+  onSimulateHazardOnRoute?: () => void;
 }
 
 export const NavigationCard: React.FC<NavigationCardProps> = ({
@@ -61,7 +62,8 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
   onSelectRouteType,
   onNewSearch,
   onDetectLocation,
-  isDetectingLocation = false
+  isDetectingLocation = false,
+  onSimulateHazardOnRoute
 }) => {
   const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
   const [showDestSuggestions, setShowDestSuggestions] = useState(false);
@@ -614,6 +616,21 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                   worth driving through{' '}
                   <strong className="text-red-700">{hazardDepth} cm</strong> of flood water?
                 </p>
+              </div>
+            )}
+
+            {/* Test Simulation Button */}
+            {onSimulateHazardOnRoute && (
+              <div className="pt-1">
+                <button
+                  type="button"
+                  onClick={onSimulateHazardOnRoute}
+                  className="w-full py-2 px-3 rounded-lg border border-red-200 bg-red-50/70 hover:bg-red-100/80 active:bg-red-200 text-red-800 text-xs font-semibold flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  title="Simulate a newly reported flash flood hazard along the active route"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 text-red-600 shrink-0" />
+                  <span>Simulate Hazard on Active Route (Test Alert)</span>
+                </button>
               </div>
             )}
           </>

@@ -22,6 +22,14 @@ import {
 } from './data/seedHazards';
 import { resolveLocation, PlaceResult } from './services/geocodingService';
 import { detectCurrentUserLocation } from './services/locationService';
+import { detectHazardIntersections } from './services/routingService';
+import { AlertTriangle, X, ShieldAlert } from 'lucide-react';
+
+interface HazardRouteAlert {
+  id: string;
+  hazard: HazardZone;
+  timestamp: string;
+}
 
 export default function App() {
   const latestRequestIdRef = React.useRef(0);
@@ -66,6 +74,80 @@ export default function App() {
   const [locationToast, setLocationToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHazards, setShowHazards] = useState(true);
   const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('streets');
+
+  // Real-Time Hazard Alert State & Tracking Refs
+  const [realtimeHazardAlert, setRealtimeHazardAlert] = useState<HazardRouteAlert | null>(null);
+  const knownHazardIdsRef = React.useRef<Set<string>>(new Set(INITIAL_HAZARDS.map((h) => h.id)));
+  const alertedHazardIdsRef = React.useRef<Set<string>>(new Set());
+
+  // Trigger browser alert and in-app real-time notification
+  const triggerHazardIntersectionAlert = (hazard: HazardZone) => {
+    if (alertedHazardIdsRef.current.has(hazard.id)) return;
+    alertedHazardIdsRef.current.add(hazard.id);
+
+    const alertMessage = `🚨 REAL-TIME ROUTE HAZARD ALERT!\n\nA newly reported ${hazard.severity} flood hazard intersects your active route:\n\n• Location: ${hazard.name} (${hazard.roadName || ''})\n• Water Depth: ${hazard.waterDepthCm} cm\n• Severity: ${hazard.severity}\n\nClimatePulse recommends recalculating your route immediately.`;
+
+    // 1. Browser Native Alert (safely caught in case iframe sandboxing suppresses alerts)
+    try {
+      if (typeof window !== 'undefined' && typeof window.alert === 'function') {
+        window.alert(alertMessage);
+      }
+    } catch (err) {
+      console.warn('[Realtime Alert] window.alert was suppressed by iframe sandbox:', err);
+    }
+
+    // 2. Browser Web Notification API
+    try {
+      if (typeof window !== 'undefined' && 'Notification' in window && Notification.permission === 'granted') {
+        new Notification(`🚨 ClimatePulse Flood Warning: ${hazard.name}`, {
+          body: `New ${hazard.waterDepthCm}cm flood hazard detected on your route at ${hazard.roadName}.`,
+          icon: '/favicon.ico'
+        });
+      }
+    } catch {
+      // Non-fatal
+    }
+
+    // 3. High-visibility in-app real-time notification banner
+    setRealtimeHazardAlert({
+      id: hazard.id,
+      hazard,
+      timestamp: new Date().toLocaleTimeString()
+    });
+  };
+
+  // Simulate a newly reported high-severity hazard along the user's active route
+  const handleSimulateHazardOnRoute = () => {
+    if (!comparison) return;
+    const activeRoute = selectedRouteType === 'SAFE' && comparison.safe ? comparison.safe : comparison.fastest;
+    if (!activeRoute || activeRoute.coordinates.length < 3) return;
+
+    // Pick a point along the active route
+    const midIndex = Math.floor(activeRoute.coordinates.length / 2);
+    const midPoint = activeRoute.coordinates[midIndex];
+
+    const simulatedHazard: HazardZone = {
+      id: `hazard-live-${Date.now()}`,
+      city: currentCity,
+      name: `Sudden Flood Inundation along ${destinationText || 'Active Route'}`,
+      roadName: 'Active Travel Corridor',
+      center: [midPoint[0], midPoint[1]],
+      radiusMeters: 450,
+      severity: 'CRITICAL',
+      waterDepthCm: 52,
+      rainfallIntensityMmPerHour: 48,
+      riskWeight: 0.95,
+      source: 'OFFICIAL_SENSOR',
+      status: 'ACTIVE',
+      verified: true,
+      reportedAt: 'Just now',
+      notes: 'Real-time telemetry reported flash overflow exceeding 50 cm. Immediate alert dispatched.'
+    };
+
+    setHazards((prev) => [simulatedHazard, ...prev]);
+    knownHazardIdsRef.current.add(simulatedHazard.id);
+    triggerHazardIntersectionAlert(simulatedHazard);
+  };
 
   // Handle live user GPS location detection
   const handleDetectUserLocation = async () => {
@@ -165,6 +247,56 @@ export default function App() {
       })
       .catch(() => {});
   }, [currentCity]);
+
+  // Synchronize known hazard IDs
+  useEffect(() => {
+    hazards.forEach((h) => knownHazardIdsRef.current.add(h.id));
+  }, [hazards]);
+
+  // Real-time polling: Check for newly reported hazards and test against user's active route
+  useEffect(() => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const res = await fetch(`/api/hazards?city=${currentCity}`);
+        if (!res.ok) return;
+        const freshHazards: HazardZone[] = await res.json();
+        if (!Array.isArray(freshHazards)) return;
+
+        const newlyReported = freshHazards.filter((h) => !knownHazardIdsRef.current.has(h.id));
+        if (newlyReported.length > 0) {
+          newlyReported.forEach((h) => knownHazardIdsRef.current.add(h.id));
+          setHazards((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const toAdd = newlyReported.filter((h) => !existingIds.has(h.id));
+            return toAdd.length > 0 ? [...toAdd, ...prev] : prev;
+          });
+
+          // If the user has an active route calculated, check if the new hazard intersects it
+          if (comparison) {
+            const activeRoute = selectedRouteType === 'SAFE' && comparison.safe ? comparison.safe : comparison.fastest;
+            for (const newHazard of newlyReported) {
+              const isHighSeverity =
+                newHazard.severity === 'CRITICAL' ||
+                newHazard.severity === 'HIGH' ||
+                newHazard.waterDepthCm >= 30;
+
+              if (isHighSeverity) {
+                const hits = detectHazardIntersections(activeRoute.coordinates, [newHazard]);
+                if (hits.length > 0) {
+                  triggerHazardIntersectionAlert(newHazard);
+                  break;
+                }
+              }
+            }
+          }
+        }
+      } catch {
+        // Non-fatal background polling failure
+      }
+    }, 6000);
+
+    return () => clearInterval(pollInterval);
+  }, [currentCity, comparison, selectedRouteType]);
 
   // Route calculation execution
   const executeRouteCalculation = async (params: {
@@ -412,7 +544,25 @@ export default function App() {
           notes: reportData.userNotes
         };
         setHazards((prev) => [newHazard, ...prev]);
-        responseData = { success: true };
+        responseData = { success: true, hazard: newHazard };
+      }
+
+      // Check if newly reported hazard intersects the active route
+      const createdHazard: HazardZone | undefined = responseData?.hazard;
+      if (createdHazard) {
+        knownHazardIdsRef.current.add(createdHazard.id);
+        const isHighSeverity =
+          createdHazard.severity === 'CRITICAL' ||
+          createdHazard.severity === 'HIGH' ||
+          createdHazard.waterDepthCm >= 30;
+
+        if (isHighSeverity && comparison) {
+          const activeRoute = selectedRouteType === 'SAFE' && comparison.safe ? comparison.safe : comparison.fastest;
+          const hits = detectHazardIntersections(activeRoute.coordinates, [createdHazard]);
+          if (hits.length > 0) {
+            triggerHazardIntersectionAlert(createdHazard);
+          }
+        }
       }
 
       // If comparison is active, refresh route to immediately reflect the new hazard
@@ -462,6 +612,60 @@ export default function App() {
           }}
         >
           <span>{locationToast.message}</span>
+        </div>
+      )}
+
+      {/* Real-Time Hazard Alert Banner (High Severity Route Collision Warning) */}
+      {realtimeHazardAlert && (
+        <div
+          role="alert"
+          className="fixed top-18 left-1/2 -translate-x-1/2 z-50 w-11/12 max-w-xl bg-red-600 text-white rounded-2xl p-4 shadow-2xl border-2 border-red-300 animate-in fade-in slide-in-from-top-4 flex items-start gap-3.5"
+        >
+          <div className="p-2 bg-red-700/80 rounded-xl shrink-0 mt-0.5 animate-pulse">
+            <AlertTriangle className="w-6 h-6 text-yellow-300" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="bg-white/20 text-white text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full">
+                Real-Time Warning
+              </span>
+              <span className="text-xs text-red-100 font-mono">{realtimeHazardAlert.timestamp}</span>
+            </div>
+            <h4 className="text-sm font-bold text-white mt-1 leading-snug">
+              Active Route Intersects Newly Reported {realtimeHazardAlert.hazard.severity} Flood Zone!
+            </h4>
+            <p className="text-xs text-red-100 mt-1">
+              <strong className="text-white">{realtimeHazardAlert.hazard.name}</strong> ({realtimeHazardAlert.hazard.waterDepthCm} cm water depth). Driving through this corridor risks engine lock and stall.
+            </p>
+            <div className="flex items-center gap-2 mt-3">
+              <button
+                onClick={() => {
+                  setRealtimeHazardAlert(null);
+                  executeRouteCalculation({
+                    origin: resolvedOriginCoords,
+                    dest: resolvedDestCoords,
+                    scenarioId: undefined
+                  });
+                }}
+                className="px-3 py-1.5 bg-white text-red-700 hover:bg-red-50 text-xs font-bold rounded-lg shadow transition-colors flex items-center gap-1.5 cursor-pointer"
+              >
+                Recalculate Route
+              </button>
+              <button
+                onClick={() => setRealtimeHazardAlert(null)}
+                className="px-3 py-1.5 bg-red-700/60 hover:bg-red-700 text-white text-xs font-medium rounded-lg transition-colors cursor-pointer"
+              >
+                Dismiss
+              </button>
+            </div>
+          </div>
+          <button
+            onClick={() => setRealtimeHazardAlert(null)}
+            className="text-red-200 hover:text-white p-1 rounded-lg hover:bg-red-700/50 cursor-pointer"
+            title="Close alert"
+          >
+            <X className="w-5 h-5" />
+          </button>
         </div>
       )}
 
@@ -521,6 +725,7 @@ export default function App() {
             onSelectVehicle={setSelectedVehicle}
             onDetectLocation={handleDetectUserLocation}
             isDetectingLocation={isDetectingLocation}
+            onSimulateHazardOnRoute={comparison ? handleSimulateHazardOnRoute : undefined}
           />
         </div>
       </div>
