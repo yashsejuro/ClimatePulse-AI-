@@ -63,6 +63,7 @@ const CITY_LANDMARKS: Record<CityId, PlaceResult[]> = {
     { name: 'Delhi', detail: 'National Capital Territory', coords: [28.6139, 77.2090] },
     { name: 'Connaught Place Inner Circle', detail: 'Rajiv Chowk, New Delhi', coords: [28.6328, 77.2197] },
     { name: 'Noida Sector 18 Mall', detail: 'Atta Market / Wave Mall, Noida', coords: [28.5708, 77.3261] },
+    { name: 'Noida Sector 62', detail: 'Electronic City Metro, Noida', coords: [28.6280, 77.3649] },
     { name: 'Minto Bridge Underpass', detail: 'Deen Dayal Upadhyay Marg Submerged Point', coords: [28.6341, 77.2274] },
     { name: 'ITO Ring Road', detail: 'Vikas Marg / Yamuna Flood Basin', coords: [28.6290, 77.2435] },
     { name: 'Pul Prahladpur Underpass', detail: 'Mehrauli-Badarpur Road', coords: [28.5085, 77.2882] },
@@ -70,6 +71,7 @@ const CITY_LANDMARKS: Record<CityId, PlaceResult[]> = {
     { name: 'Gurgaon Cyber City', detail: 'DLF Phase 2 / NH-48', coords: [28.4950, 77.0895] },
     { name: 'Hauz Khas Village', detail: 'Deer Park / Aurobindo Marg', coords: [28.5494, 77.2001] },
     { name: 'Akshardham Temple Complex', detail: 'NH-24 / Mayur Vihar Link', coords: [28.6127, 77.2773] },
+    { name: 'Saket Select Citywalk', detail: 'Press Enclave Road, Saket', coords: [28.5283, 77.2185] },
     { name: 'Delhi Airport T3 (DEL)', detail: 'IGI Airport Road', coords: [28.5562, 77.1000] }
   ]
 };
@@ -116,15 +118,98 @@ export function searchPlaceSuggestions(query: string, city: CityId): PlaceResult
   return matched.slice(0, 5);
 }
 
+// In-memory cache for live geocoding suggestions
+const suggestionsCache = new Map<string, PlaceResult[]>();
+
+/**
+ * Asynchronously fetches rich place suggestions combining local landmarks
+ * and live OpenStreetMap Nominatim results across the city or country.
+ */
+export async function fetchPlaceSuggestions(query: string, city: CityId): Promise<PlaceResult[]> {
+  const trimmed = query.trim();
+  if (!trimmed) {
+    return (CITY_LANDMARKS[city] || []).slice(0, 5);
+  }
+
+  const localMatches = searchPlaceSuggestions(trimmed, city);
+  if (trimmed.length < 2) {
+    return localMatches;
+  }
+
+  const cacheKey = `${city}:${trimmed.toLowerCase()}`;
+  if (suggestionsCache.has(cacheKey)) {
+    return suggestionsCache.get(cacheKey)!;
+  }
+
+  try {
+    const vb = CITY_VIEWBOXES[city] || CITY_VIEWBOXES.bengaluru;
+    const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+      trimmed
+    )}&countrycodes=in&viewbox=${vb.left},${vb.top},${vb.right},${vb.bottom}&limit=5&addressdetails=1`;
+
+    const res = await fetch(searchUrl, {
+      headers: {
+        Accept: 'application/json',
+        'User-Agent': 'ClimatePulse-App/1.0'
+      },
+      signal: AbortSignal.timeout(2500)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const osmResults: PlaceResult[] = data
+          .map((item: any) => {
+            const lat = parseFloat(item.lat);
+            const lon = parseFloat(item.lon);
+            if (isNaN(lat) || isNaN(lon)) return null;
+            const name = item.display_name ? item.display_name.split(',')[0].trim() : trimmed;
+            const detailParts = item.display_name
+              ? item.display_name.split(',').slice(1, 3).map((s: string) => s.trim())
+              : [];
+            const detail = detailParts.join(', ') || item.type || 'Location';
+            return {
+              name,
+              detail,
+              coords: [lat, lon] as [number, number]
+            };
+          })
+          .filter((p): p is PlaceResult => p !== null);
+
+        // Merge local matches and OSM results without duplicates
+        const combined: PlaceResult[] = [...localMatches];
+        for (const osm of osmResults) {
+          const alreadyExists = combined.some(
+            (c) =>
+              c.name.toLowerCase() === osm.name.toLowerCase() ||
+              (Math.abs(c.coords[0] - osm.coords[0]) < 0.005 &&
+                Math.abs(c.coords[1] - osm.coords[1]) < 0.005)
+          );
+          if (!alreadyExists) {
+            combined.push(osm);
+          }
+        }
+
+        const finalResults = combined.slice(0, 6);
+        suggestionsCache.set(cacheKey, finalResults);
+        return finalResults;
+      }
+    }
+  } catch {
+    // On network failure or abort, return local landmark matches
+  }
+
+  return localMatches;
+}
+
 /**
  * Resolves a text location to coordinates.
  * Priority:
  * 1. Explicit lat, lon in string
  * 2. Exact match in active city landmarks
- * 3. Exact match across all Indian city landmarks
- * 4. Substring match in active city landmarks
- * 5. Substring match across all Indian city landmarks
- * 6. Live OpenStreetMap Nominatim with proper headers
+ * 3. Substring match in active city landmarks
+ * 4. Live OpenStreetMap Nominatim with city bounded viewbox
+ * 5. Live OpenStreetMap Nominatim across India fallback
  * 
  * If location cannot be found, throws an Error with a clear message:
  * "Could not find location: <query>".
@@ -204,6 +289,41 @@ export async function resolveLocation(
     }
   } catch (err) {
     console.warn('[GEOCODE] Nominatim query error:', err);
+  }
+
+  // 5. OpenStreetMap nationwide query fallback for locations in other cities or broader metro regions
+  try {
+    const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+      trimmed
+    )}&countrycodes=in&limit=1`;
+
+    const res = await fetch(searchUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'ClimatePulse-App/1.0'
+      },
+      signal: AbortSignal.timeout(3500)
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lon = parseFloat(data[0].lon);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          const resolvedName = data[0].display_name
+            ? data[0].display_name.split(',')[0]
+            : trimmed;
+          console.log(`[GEOCODE] Nationwide Nominatim found: ${resolvedName} [${lat}, ${lon}] for "${trimmed}"`);
+          return {
+            name: resolvedName,
+            coords: [lat, lon]
+          };
+        }
+      }
+    }
+  } catch (err) {
+    console.warn('[GEOCODE] Nationwide Nominatim query error:', err);
   }
 
   // If geocoding fails completely: THROW AN ERROR, DO NOT SILENTLY DEFAULT

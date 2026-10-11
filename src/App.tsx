@@ -3,6 +3,7 @@ import { Navbar } from './components/Navbar';
 import { Map } from './components/Map';
 import { NavigationCard } from './components/NavigationCard';
 import { CitizenReportModal } from './components/CitizenReportModal';
+import { HeroLanding } from './components/HeroLanding';
 import {
   CityId,
   HazardZone,
@@ -20,6 +21,7 @@ import {
   VEHICLE_PROFILES
 } from './data/seedHazards';
 import { resolveLocation, PlaceResult } from './services/geocodingService';
+import { detectCurrentUserLocation } from './services/locationService';
 
 export default function App() {
   const latestRequestIdRef = React.useRef(0);
@@ -49,6 +51,7 @@ export default function App() {
     initialPreset?.destination.coords || [12.8399, 77.677]
   );
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>('sedan');
+  const [customMapCenter, setCustomMapCenter] = useState<[number, number] | null>(null);
 
   // 3. Evaluation & Route State (Screen 2 is active when comparison !== null)
   const [comparison, setComparison] = useState<RouteComparisonResponse | null>(null);
@@ -58,8 +61,50 @@ export default function App() {
 
   // 4. Map & Modals State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
+  const [isHeroOpen, setIsHeroOpen] = useState(true);
+  const [isDetectingLocation, setIsDetectingLocation] = useState(false);
+  const [locationToast, setLocationToast] = useState<{ message: string; type: 'success' | 'error' | 'info' } | null>(null);
   const [showHazards, setShowHazards] = useState(true);
   const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('streets');
+
+  // Handle live user GPS location detection
+  const handleDetectUserLocation = async () => {
+    setIsDetectingLocation(true);
+    setLocationToast({ message: 'Accessing GPS coordinates...', type: 'info' });
+    try {
+      const result = await detectCurrentUserLocation();
+      latestRequestIdRef.current++;
+      abortControllerRef.current?.abort();
+      abortControllerRef.current = null;
+      setIsLoading(false);
+
+      setOriginText(result.name);
+      setResolvedOriginCoords(result.coords);
+      setCustomMapCenter(result.coords);
+      setActiveScenarioId(null);
+      setComparison(null);
+      setErrorMessage(null);
+
+      // If coordinates are in proximity to another supported city, select that city
+      if (result.city && result.city !== currentCity) {
+        console.log(`[GEOLOCATION] Auto-switched to city: ${result.city}`);
+        setCurrentCity(result.city);
+      }
+
+      setIsHeroOpen(false);
+      setLocationToast({ message: `Location set: ${result.name}`, type: 'success' });
+      setTimeout(() => setLocationToast(null), 4000);
+    } catch (err: any) {
+      console.warn('[GEOLOCATION] Detection error:', err);
+      setLocationToast({
+        message: err?.message || 'Could not access GPS. Please type an area name.',
+        type: 'error'
+      });
+      setTimeout(() => setLocationToast(null), 5000);
+    } finally {
+      setIsDetectingLocation(false);
+    }
+  };
 
   // City change handler
   const handleSelectCity = (newCity: CityId) => {
@@ -69,6 +114,7 @@ export default function App() {
     abortControllerRef.current = null;
     setIsLoading(false);
     setCurrentCity(newCity);
+    setCustomMapCenter(null);
     setComparison(null); // Return to Screen 1 on city switch
     setSelectedRouteType('SAFE');
 
@@ -246,6 +292,7 @@ export default function App() {
     setActiveScenarioId(null);
     setOriginText(place.name);
     setResolvedOriginCoords(place.coords);
+    setCustomMapCenter(place.coords);
     setComparison(null);
     setSelectedRouteType('SAFE');
     setErrorMessage(null);
@@ -259,6 +306,7 @@ export default function App() {
     setActiveScenarioId(null);
     setDestinationText(place.name);
     setResolvedDestCoords(place.coords);
+    setCustomMapCenter(place.coords);
     setComparison(null);
     setSelectedRouteType('SAFE');
     setErrorMessage(null);
@@ -383,21 +431,55 @@ export default function App() {
   };
 
   const cityMeta = CITIES[currentCity] || CITIES.bengaluru;
+  const activeCenter = customMapCenter || cityMeta.center;
 
   return (
     <div className="relative w-full h-screen overflow-hidden flex flex-col bg-white text-gray-900 font-sans select-none">
+      {/* Toast Notification Banner */}
+      {locationToast && (
+        <div
+          role="status"
+          className="fixed top-16 left-1/2 -translate-x-1/2 z-50 px-4 py-2 rounded-xl text-xs font-semibold shadow-lg transition-all animate-in fade-in slide-in-from-top-2 border flex items-center gap-2"
+          style={{
+            backgroundColor:
+              locationToast.type === 'error'
+                ? '#fef2f2'
+                : locationToast.type === 'success'
+                ? '#f0fdf4'
+                : '#f8fafc',
+            color:
+              locationToast.type === 'error'
+                ? '#991b1b'
+                : locationToast.type === 'success'
+                ? '#166534'
+                : '#1e293b',
+            borderColor:
+              locationToast.type === 'error'
+                ? '#fecaca'
+                : locationToast.type === 'success'
+                ? '#bbf7d0'
+                : '#e2e8f0'
+          }}
+        >
+          <span>{locationToast.message}</span>
+        </div>
+      )}
+
       {/* Simple Clean Navbar */}
       <Navbar
         currentCity={currentCity}
         onSelectCity={handleSelectCity}
         onOpenReportModal={() => setIsReportModalOpen(true)}
+        onOpenHero={() => setIsHeroOpen(true)}
+        onLocateUser={handleDetectUserLocation}
+        isLocating={isDetectingLocation}
       />
 
       {/* Main Map Canvas Area */}
       <div className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden">
         {/* Full Interactive Background Map */}
         <Map
-          center={cityMeta.center}
+          center={activeCenter}
           zoom={cityMeta.zoom}
           hazards={hazards.filter((h) => h.city === currentCity)}
           citizenReports={citizenReports.filter((r) => r.city === currentCity)}
@@ -412,6 +494,8 @@ export default function App() {
           onToggleHazards={() => setShowHazards((prev) => !prev)}
           mapTileTheme={mapTileTheme}
           onToggleTheme={() => setMapTileTheme((t) => (t === 'streets' ? 'dark' : 'streets'))}
+          onLocateMe={handleDetectUserLocation}
+          isLocating={isDetectingLocation}
         />
 
         {/* Compact Floating Navigation Panel (Desktop: Floating card; Mobile: Bottom sheet) */}
@@ -435,9 +519,23 @@ export default function App() {
             onNewSearch={handleNewSearch}
             selectedVehicle={selectedVehicle}
             onSelectVehicle={setSelectedVehicle}
+            onDetectLocation={handleDetectUserLocation}
+            isDetectingLocation={isDetectingLocation}
           />
         </div>
       </div>
+
+      {/* Hero Welcome / First-Time Guide Screen */}
+      <HeroLanding
+        isOpen={isHeroOpen}
+        onClose={() => setIsHeroOpen(false)}
+        onUseCurrentLocation={handleDetectUserLocation}
+        onSelectScenario={handleSelectScenario}
+        scenarios={cityScenarios}
+        currentCity={currentCity}
+        onSelectCity={handleSelectCity}
+        isDetectingLocation={isDetectingLocation}
+      />
 
       {/* Simple Citizen Report Modal */}
       {isReportModalOpen && (

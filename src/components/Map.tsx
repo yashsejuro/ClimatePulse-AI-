@@ -1,6 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import L from 'leaflet';
-import { Plus, Minus, Navigation as NavIcon, Eye, EyeOff, Layers } from 'lucide-react';
+import { Plus, Minus, Navigation as NavIcon, Eye, EyeOff, Layers, Crosshair } from 'lucide-react';
 import { HazardZone, CitizenReport, RouteOption } from '../types';
 
 interface MapProps {
@@ -19,6 +19,8 @@ interface MapProps {
   onToggleHazards?: () => void;
   mapTileTheme?: 'dark' | 'streets';
   onToggleTheme?: () => void;
+  onLocateMe?: () => void;
+  isLocating?: boolean;
 }
 
 export const Map: React.FC<MapProps> = ({
@@ -36,7 +38,9 @@ export const Map: React.FC<MapProps> = ({
   showHazards = true,
   onToggleHazards,
   mapTileTheme = 'streets',
-  onToggleTheme
+  onToggleTheme,
+  onLocateMe,
+  isLocating = false
 }) => {
   const mapContainerRef = useRef<HTMLDivElement>(null);
   const mapInstanceRef = useRef<L.Map | null>(null);
@@ -345,6 +349,24 @@ export const Map: React.FC<MapProps> = ({
 
       {/* Minimal Map Controls (Top-Right / Bottom-Right) */}
       <div className="absolute top-4 right-4 z-10 flex flex-col gap-1.5">
+        {/* Locate Me */}
+        {onLocateMe && (
+          <button
+            type="button"
+            onClick={onLocateMe}
+            disabled={isLocating}
+            className="w-8 h-8 rounded-lg bg-white border border-gray-200 shadow-sm flex items-center justify-center text-gray-700 hover:bg-gray-50 active:bg-gray-100 transition-colors cursor-pointer disabled:opacity-50"
+            title="My live location"
+            aria-label="My live location"
+          >
+            {isLocating ? (
+              <span className="w-3.5 h-3.5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+            ) : (
+              <Crosshair className="w-3.5 h-3.5 text-emerald-700" />
+            )}
+          </button>
+        )}
+
         {/* Recenter */}
         <button
           type="button"

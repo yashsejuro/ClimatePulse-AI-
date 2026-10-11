@@ -1,5 +1,5 @@
 import React from 'react';
-import { ShieldCheck, MapPin } from 'lucide-react';
+import { ShieldCheck, MapPin, Compass, Crosshair, Loader2 } from 'lucide-react';
 import { CityId } from '../types';
 import { CITIES } from '../data/cities';
 
@@ -7,13 +7,19 @@ interface NavbarProps {
   currentCity: CityId;
   onSelectCity: (city: CityId) => void;
   onOpenReportModal: () => void;
+  onOpenHero?: () => void;
+  onLocateUser?: () => void;
+  isLocating?: boolean;
   onResetData?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentCity,
   onSelectCity,
-  onOpenReportModal
+  onOpenReportModal,
+  onOpenHero,
+  onLocateUser,
+  isLocating = false
 }) => {
   return (
     <header className="w-full bg-white border-b border-gray-200 z-30 select-none">
@@ -34,7 +40,38 @@ export const Navbar: React.FC<NavbarProps> = ({
         </div>
 
         {/* Minimal Controls */}
-        <div className="flex items-center gap-2.5">
+        <div className="flex items-center gap-2 sm:gap-2.5">
+          {/* Guide / About Button */}
+          {onOpenHero && (
+            <button
+              type="button"
+              onClick={onOpenHero}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 text-xs text-gray-700 font-medium transition-colors cursor-pointer"
+              title="Overview & Demo Corridors"
+            >
+              <Compass className="w-3.5 h-3.5 text-emerald-700" />
+              <span className="hidden sm:inline">Guide & Demo</span>
+            </button>
+          )}
+
+          {/* Quick GPS Locate */}
+          {onLocateUser && (
+            <button
+              type="button"
+              onClick={onLocateUser}
+              disabled={isLocating}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 text-xs text-gray-700 font-medium transition-colors cursor-pointer disabled:opacity-50"
+              title="Detect live GPS location"
+            >
+              {isLocating ? (
+                <Loader2 className="w-3.5 h-3.5 text-emerald-600 animate-spin" />
+              ) : (
+                <Crosshair className="w-3.5 h-3.5 text-emerald-600" />
+              )}
+              <span className="hidden md:inline">{isLocating ? 'Locating...' : 'My Location'}</span>
+            </button>
+          )}
+
           {/* Small Secondary City Selector */}
           <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 text-xs transition-colors">
             <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />

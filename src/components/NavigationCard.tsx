@@ -8,7 +8,9 @@ import {
   MapPin,
   X,
   ChevronLeft,
-  AlertOctagon
+  AlertOctagon,
+  Crosshair,
+  Loader2
 } from 'lucide-react';
 import {
   CityId,
@@ -16,7 +18,7 @@ import {
   RouteComparisonResponse,
   VehicleType
 } from '../types';
-import { searchPlaceSuggestions, PlaceResult } from '../services/geocodingService';
+import { searchPlaceSuggestions, fetchPlaceSuggestions, PlaceResult } from '../services/geocodingService';
 
 interface NavigationCardProps {
   city: CityId;
@@ -37,6 +39,8 @@ interface NavigationCardProps {
   onNewSearch: () => void;
   selectedVehicle?: VehicleType;
   onSelectVehicle?: (vehicle: VehicleType) => void;
+  onDetectLocation?: () => void;
+  isDetectingLocation?: boolean;
 }
 
 export const NavigationCard: React.FC<NavigationCardProps> = ({
@@ -55,23 +59,69 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
   comparison,
   selectedRouteType,
   onSelectRouteType,
-  onNewSearch
+  onNewSearch,
+  onDetectLocation,
+  isDetectingLocation = false
 }) => {
   const [showOriginSuggestions, setShowOriginSuggestions] = useState(false);
   const [showDestSuggestions, setShowDestSuggestions] = useState(false);
   const [originSuggestions, setOriginSuggestions] = useState<PlaceResult[]>([]);
   const [destSuggestions, setDestSuggestions] = useState<PlaceResult[]>([]);
+  const [isSearchingOrigin, setIsSearchingOrigin] = useState(false);
+  const [isSearchingDest, setIsSearchingDest] = useState(false);
   const [isNavigating, setIsNavigating] = useState(false);
 
   const originInputRef = useRef<HTMLInputElement>(null);
   const destInputRef = useRef<HTMLInputElement>(null);
 
+  // Live debounced suggestions for origin
   useEffect(() => {
+    let isCancelled = false;
     setOriginSuggestions(searchPlaceSuggestions(originText, city));
+
+    const timer = setTimeout(async () => {
+      if (originText.trim().length >= 2) {
+        setIsSearchingOrigin(true);
+        try {
+          const res = await fetchPlaceSuggestions(originText, city);
+          if (!isCancelled) {
+            setOriginSuggestions(res);
+          }
+        } finally {
+          if (!isCancelled) setIsSearchingOrigin(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
   }, [originText, city]);
 
+  // Live debounced suggestions for destination
   useEffect(() => {
+    let isCancelled = false;
     setDestSuggestions(searchPlaceSuggestions(destinationText, city));
+
+    const timer = setTimeout(async () => {
+      if (destinationText.trim().length >= 2) {
+        setIsSearchingDest(true);
+        try {
+          const res = await fetchPlaceSuggestions(destinationText, city);
+          if (!isCancelled) {
+            setDestSuggestions(res);
+          }
+        } finally {
+          if (!isCancelled) setIsSearchingDest(false);
+        }
+      }
+    }, 250);
+
+    return () => {
+      isCancelled = true;
+      clearTimeout(timer);
+    };
   }, [destinationText, city]);
 
   const handleSwap = () => {
@@ -103,12 +153,30 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
           )}
 
           {/* Location Inputs */}
-          <div className="space-y-2 relative">
+          <div className="space-y-2.5 relative">
             {/* From Input */}
             <div className="relative">
-              <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1">
-                From
-              </label>
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider">
+                  From
+                </label>
+                {onDetectLocation && (
+                  <button
+                    type="button"
+                    onClick={onDetectLocation}
+                    disabled={isDetectingLocation}
+                    title="Use live GPS location"
+                    className="flex items-center gap-1 text-[11px] text-emerald-700 hover:text-emerald-800 font-medium cursor-pointer transition-colors"
+                  >
+                    {isDetectingLocation ? (
+                      <Loader2 className="w-3 h-3 animate-spin text-emerald-600" />
+                    ) : (
+                      <Crosshair className="w-3 h-3" />
+                    )}
+                    <span>{isDetectingLocation ? 'Locating...' : 'Locate Me'}</span>
+                  </button>
+                )}
+              </div>
               <div className="relative">
                 <div className="absolute inset-y-0 left-0 pl-3 flex items-center pointer-events-none">
                   <div className="w-2 h-2 rounded-full bg-emerald-600"></div>
@@ -116,7 +184,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                 <input
                   ref={originInputRef}
                   type="text"
-                  placeholder="Starting point"
+                  placeholder="Starting point (e.g. Koramangala or My Location)"
                   value={originText}
                   onChange={(e) => {
                     onChangeOrigin(e.target.value);
@@ -130,22 +198,53 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                       onSearchRoute();
                     }
                   }}
-                  className="w-full pl-8 pr-7 py-2 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-xl text-xs text-gray-900 font-medium transition-colors"
+                  className="w-full pl-8 pr-14 py-2 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-xl text-xs text-gray-900 font-medium transition-colors"
                 />
-                {originText && (
-                  <button
-                    type="button"
-                    onClick={() => onChangeOrigin('')}
-                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-xs text-gray-400 hover:text-gray-600 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
+                  {isSearchingOrigin && (
+                    <Loader2 className="w-3 h-3 text-gray-400 animate-spin" />
+                  )}
+                  {originText ? (
+                    <button
+                      type="button"
+                      onClick={() => onChangeOrigin('')}
+                      className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  ) : onDetectLocation ? (
+                    <button
+                      type="button"
+                      onClick={onDetectLocation}
+                      disabled={isDetectingLocation}
+                      title="Detect current location"
+                      className="p-1 text-emerald-600 hover:text-emerald-800 cursor-pointer"
+                    >
+                      <Crosshair className="w-3.5 h-3.5" />
+                    </button>
+                  ) : null}
+                </div>
               </div>
 
               {/* Suggestions */}
-              {showOriginSuggestions && originSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden divide-y divide-gray-100 max-h-40 overflow-y-auto">
+              {showOriginSuggestions && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden divide-y divide-gray-100 max-h-48 overflow-y-auto">
+                  {onDetectLocation && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        onDetectLocation();
+                        setShowOriginSuggestions(false);
+                      }}
+                      className="w-full text-left px-3 py-2 bg-emerald-50/60 hover:bg-emerald-100/70 flex items-center gap-2 transition-colors cursor-pointer text-emerald-900"
+                    >
+                      <Crosshair className="w-3.5 h-3.5 text-emerald-700 shrink-0" />
+                      <div className="min-w-0">
+                        <div className="text-xs font-semibold">Use Current GPS Location</div>
+                        <div className="text-[10px] text-emerald-700/80">Detect doorstep coordinates</div>
+                      </div>
+                    </button>
+                  )}
                   {originSuggestions.map((place, idx) => (
                     <button
                       key={idx}
@@ -167,23 +266,29 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                       </div>
                     </button>
                   ))}
+                  {originSuggestions.length === 0 && (
+                    <div className="p-3 text-center text-xs text-gray-500">
+                      Type an area, road, or city name
+                    </div>
+                  )}
                 </div>
               )}
             </div>
 
             {/* To Input with Swap */}
             <div className="relative">
-              <div className="flex items-center justify-between">
-                <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider mb-1">
+              <div className="flex items-center justify-between mb-1">
+                <label className="block text-[11px] font-medium text-gray-500 uppercase tracking-wider">
                   To
                 </label>
                 <button
                   type="button"
                   onClick={handleSwap}
                   title="Swap locations"
-                  className="p-1 -mr-1 text-gray-400 hover:text-gray-600 rounded cursor-pointer transition-colors"
+                  className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700 p-0.5 rounded cursor-pointer transition-colors"
                 >
                   <ArrowUpDown className="w-3 h-3" />
+                  <span>Swap</span>
                 </button>
               </div>
 
@@ -194,7 +299,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                 <input
                   ref={destInputRef}
                   type="text"
-                  placeholder="Destination"
+                  placeholder="Destination (e.g. Electronic City or Powai)"
                   value={destinationText}
                   onChange={(e) => {
                     onChangeDestination(e.target.value);
@@ -208,22 +313,27 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                       onSearchRoute();
                     }
                   }}
-                  className="w-full pl-8 pr-7 py-2 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-xl text-xs text-gray-900 font-medium transition-colors"
+                  className="w-full pl-8 pr-14 py-2 bg-gray-50 hover:bg-gray-100/60 focus:bg-white border border-gray-200 focus:border-emerald-600 focus:ring-1 focus:ring-emerald-600 rounded-xl text-xs text-gray-900 font-medium transition-colors"
                 />
-                {destinationText && (
-                  <button
-                    type="button"
-                    onClick={() => onChangeDestination('')}
-                    className="absolute inset-y-0 right-0 pr-2.5 flex items-center text-xs text-gray-400 hover:text-gray-600 cursor-pointer"
-                  >
-                    <X className="w-3.5 h-3.5" />
-                  </button>
-                )}
+                <div className="absolute inset-y-0 right-0 pr-2 flex items-center gap-1">
+                  {isSearchingDest && (
+                    <Loader2 className="w-3 h-3 text-gray-400 animate-spin" />
+                  )}
+                  {destinationText && (
+                    <button
+                      type="button"
+                      onClick={() => onChangeDestination('')}
+                      className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
               </div>
 
               {/* Suggestions */}
-              {showDestSuggestions && destSuggestions.length > 0 && (
-                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden divide-y divide-gray-100 max-h-40 overflow-y-auto">
+              {showDestSuggestions && (
+                <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 z-50 overflow-hidden divide-y divide-gray-100 max-h-48 overflow-y-auto">
                   {destSuggestions.map((place, idx) => (
                     <button
                       key={idx}
@@ -245,6 +355,11 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                       </div>
                     </button>
                   ))}
+                  {destSuggestions.length === 0 && (
+                    <div className="p-3 text-center text-xs text-gray-500">
+                      Type any destination, area, or landmark
+                    </div>
+                  )}
                 </div>
               )}
             </div>
