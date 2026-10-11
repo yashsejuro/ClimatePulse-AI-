@@ -18,11 +18,12 @@ import { CITIES } from '../data/cities';
 import {
   INITIAL_HAZARDS,
   INITIAL_WEATHER,
-  PRESET_SCENARIOS
+  PRESET_SCENARIOS,
+  VEHICLE_PROFILES
 } from '../data/seedHazards';
 import { resolveLocation, PlaceResult } from '../services/geocodingService';
 import { detectCurrentUserLocation } from '../services/locationService';
-import { detectHazardIntersections } from '../services/routingService';
+import { detectHazardIntersections, calculateDualRoutes } from '../services/routingService';
 import { AlertTriangle, X } from 'lucide-react';
 
 interface HazardRouteAlert {
@@ -378,16 +379,47 @@ export const Dashboard: React.FC<DashboardProps> = ({
     });
 
     try {
-      const response = await fetch('/api/route', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-        signal: controller.signal
-      });
-      const data = await response.json().catch(() => null);
+      let data: RouteComparisonResponse | null = null;
 
-      if (!response.ok) {
-        throw new Error(data?.error || 'Routing service unavailable');
+      try {
+        const response = await fetch('/api/route', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal
+        });
+
+        if (response.ok) {
+          const resJson = await response.json().catch(() => null);
+          if (resJson && resJson.fastest) {
+            data = resJson;
+          }
+        }
+      } catch (fetchErr: any) {
+        if (controller.signal.aborted || fetchErr?.name === 'AbortError') {
+          return;
+        }
+        console.warn('[executeRouteCalculation] API endpoint failed, engaging client routing engine fallback:', fetchErr?.message);
+      }
+
+      // If backend API returned error or is unavailable (e.g. serverless runtime timeout or missing Lambda),
+      // run identical deterministic client-side calculation using OSRM + GIS flood hazard models
+      if (!data) {
+        console.info('[executeRouteCalculation] Executing client-side routing engine fallback...');
+        const vehicleProfile =
+          VEHICLE_PROFILES.find((v) => v.id === selectedVehicle) || VEHICLE_PROFILES[0];
+        const activeHazardsForCity = hazards.filter(
+          (h) => !h.city || h.city.toLowerCase() === currentCity.toLowerCase()
+        );
+        data = await calculateDualRoutes(
+          params.origin,
+          params.dest,
+          activeHazardsForCity.length > 0 ? activeHazardsForCity : INITIAL_HAZARDS,
+          vehicleProfile,
+          weather.rainfallMmPerHour,
+          params.scenarioId,
+          currentCity
+        );
       }
 
       if (!data || !data.fastest) {
@@ -401,7 +433,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       console.log('[executeRouteCalculation] Response received successfully:', {
         fastestDist: data.fastest.distanceKm,
-        fastestDuration: data.fastest.durationMin,
+        fastestDuration: data.fastest.durationMinutes,
         safeRouteFound: data.safeRouteFound
       });
 

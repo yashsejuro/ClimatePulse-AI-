@@ -1,11 +1,11 @@
 import type { IncomingMessage, ServerResponse } from 'http';
-import { handleRouteCalculation } from '../src/server/handlers/routeHandler.ts';
-import { handleGetHazards, handleResetHazards, handleSeedHazards } from '../src/server/handlers/hazardsHandler.ts';
-import { handleGetReports, handleCreateReport } from '../src/server/handlers/reportHandler.ts';
-import { handleGenerateBriefing } from '../src/server/handlers/briefingHandler.ts';
-import { handleGetStatus } from '../src/server/handlers/statusHandler.ts';
-import { getWeatherAdapter } from '../src/server/adapters/weatherAdapter.ts';
-import { CityId } from '../src/types/index.ts';
+import { handleRouteCalculation } from '../src/server/handlers/routeHandler';
+import { handleGetHazards, handleResetHazards, handleSeedHazards } from '../src/server/handlers/hazardsHandler';
+import { handleGetReports, handleCreateReport } from '../src/server/handlers/reportHandler';
+import { handleGenerateBriefing } from '../src/server/handlers/briefingHandler';
+import { handleGetStatus } from '../src/server/handlers/statusHandler';
+import { getWeatherAdapter } from '../src/server/adapters/weatherAdapter';
+import { CityId } from '../src/types';
 
 // Helper to parse JSON body from incoming HTTP request
 async function parseJsonBody(req: IncomingMessage): Promise<any> {
