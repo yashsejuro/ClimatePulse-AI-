@@ -1,6 +1,7 @@
 import { DynamoDBClient } from '@aws-sdk/client-dynamodb';
 import { DynamoDBDocumentClient, PutCommand, QueryCommand, ScanCommand } from '@aws-sdk/lib-dynamodb';
 import { CitizenReport } from '../../types';
+import { logStructured } from '../utils/logger';
 
 export interface ReportRepository {
   getReports(cityId?: string): Promise<CitizenReport[]>;
@@ -103,20 +104,33 @@ export class DynamoDBReportRepository implements ReportRepository {
         return mapped;
       }
       return this.fallbackMemoryRepo.getReports(cityId);
-    } catch {
+    } catch (err: any) {
+      logStructured({
+        event: 'DYNAMODB_ERROR',
+        table: this.tableName,
+        operation: 'getReports',
+        error: err?.message || 'DynamoDB getReports failed',
+        city: cityId
+      });
       return this.fallbackMemoryRepo.getReports(cityId);
     }
   }
 
   async createReport(report: CitizenReport): Promise<CitizenReport> {
+    // Sanitize image URL to prevent storing massive base64 in DynamoDB
+    const safeImageUrl = report.imageUrl && report.imageUrl.length > 300
+      ? `metadata:image-verified-hash-${report.id}`
+      : report.imageUrl;
+
     const item = {
       PK: `REPORT#${report.id}`,
-      SK: report.submittedAt,
+      SK: report.submittedAt || new Date().toISOString(),
       reportId: report.id,
       cityId: report.city,
       address: report.address,
       lat: report.location[0],
       lon: report.location[1],
+      imageUrl: safeImageUrl,
       waterDepthCm: report.waterDepthCm,
       estimatedDepth: report.estimatedDepth,
       detectedIndicators: report.detectedFloodIndicators,
@@ -133,8 +147,14 @@ export class DynamoDBReportRepository implements ReportRepository {
           Item: item
         })
       );
-    } catch {
-      // Keep in memory fallback
+    } catch (err: any) {
+      logStructured({
+        event: 'DYNAMODB_ERROR',
+        table: this.tableName,
+        operation: 'createReport',
+        error: err?.message || 'DynamoDB createReport failed',
+        reportId: report.id
+      });
     }
 
     await this.fallbackMemoryRepo.createReport(report);
@@ -157,8 +177,10 @@ export function getReportRepository(): ReportRepository {
 
     if (hasAwsCreds) {
       reportRepoInstance = new DynamoDBReportRepository();
+      console.log(`[ReportRepository] Initialized with DynamoDB (Table: ${process.env.REPORT_TABLE_NAME || 'ClimatePulse-Reports'})`);
     } else {
       reportRepoInstance = new InMemoryReportRepository();
+      console.log('[ReportRepository] Initialized with InMemory store (Local/Dev Fallback Active)');
     }
   }
   return reportRepoInstance;

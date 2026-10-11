@@ -3,10 +3,21 @@ import { getHazardRepository } from '../repositories/hazardRepository';
 import { getWeatherAdapter } from '../adapters/weatherAdapter';
 import { getRoutingAdapter } from '../adapters/routingAdapter';
 import { CityId } from '../../types';
+import { logStructured } from '../utils/logger';
 
 export async function handleRouteCalculation(body: RouteRequestBody) {
+  const startTime = Date.now();
   try {
     const { origin, destination, vehicleId, scenarioId, city = 'bengaluru', vehicleClearanceCm } = body;
+
+    logStructured({
+      event: 'ROUTE_REQUEST',
+      city,
+      origin: origin ? `[${origin[0]}, ${origin[1]}]` : undefined,
+      destination: destination ? `[${destination[0]}, ${destination[1]}]` : undefined,
+      vehicleId,
+      scenarioId
+    });
 
     if (!origin || !destination) {
       return {
@@ -35,11 +46,38 @@ export async function handleRouteCalculation(body: RouteRequestBody) {
       city
     });
 
+    logStructured({
+      event: 'SAFE_ROUTE_VALIDATION',
+      city,
+      safeRouteFound: result.safeRouteFound,
+      avoidedHazardsCount: result.avoidedHazardsCount,
+      fastestIntersections: result.fastest.hazardsIntersected.length,
+      safeIntersections: result.safe ? result.safe.hazardsIntersected.length : 0,
+      noSafeRouteReason: result.noSafeRouteReason || null
+    });
+
+    logStructured({
+      event: 'ROUTE_RESPONSE',
+      city,
+      statusCode: 200,
+      executionTimeMs: Date.now() - startTime,
+      fastestDistanceKm: result.fastest.distanceKm,
+      safeDistanceKm: result.safe?.distanceKm,
+      timeDeltaMinutes: result.timeDeltaMinutes
+    });
+
     return {
       statusCode: 200,
       data: result
     };
   } catch (err: any) {
+    logStructured({
+      event: 'ROUTE_RESPONSE',
+      statusCode: 503,
+      executionTimeMs: Date.now() - startTime,
+      error: err?.message || 'Routing service unavailable'
+    });
+
     return {
       statusCode: 503,
       data: { error: err?.message || 'Routing service unavailable' }

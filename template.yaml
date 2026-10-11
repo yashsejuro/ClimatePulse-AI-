@@ -95,20 +95,35 @@ Resources:
   ClimatePulseFunction:
     Type: AWS::Serverless::Function
     Properties:
-      Handler: lambda.handler
+      Handler: src/server/lambda.handler
       CodeUri: ./
       Policies:
-        # DynamoDB CRUD Access
-        - DynamoDBCrudPolicy:
-            TableName: !Ref HazardsTable
-        - DynamoDBCrudPolicy:
-            TableName: !Ref ReportsTable
-        # Amazon Bedrock Invocation Access
+        # DynamoDB Least-Privilege Table Access
+        - Statement:
+            - Effect: Allow
+              Action:
+                - dynamodb:GetItem
+                - dynamodb:PutItem
+                - dynamodb:Query
+                - dynamodb:Scan
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt HazardsTable.Arn
+                - !GetAtt ReportsTable.Arn
+        # Amazon Bedrock Scoped Invocation Access
         - Statement:
             - Effect: Allow
               Action:
                 - bedrock:InvokeModel
-              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/*"
+              Resource: !Sub "arn:aws:bedrock:${AWS::Region}::foundation-model/${BedrockModelId}"
+      Metadata:
+        BuildMethod: esbuild
+        BuildProperties:
+          Minify: true
+          Target: "es2022"
+          Sourcemap: true
+          EntryPoints:
+            - src/server/lambda.ts
       Events:
         ApiRoute:
           Type: HttpApi

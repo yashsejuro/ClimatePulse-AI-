@@ -84,6 +84,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 42,
     riskWeight: 0.95,
     source: 'OFFICIAL_SENSOR',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '12 mins ago',
     notes: 'Severe stormwater drain overflow. 3 vehicles stalled. Water reaches above bumper height.'
@@ -100,6 +101,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 38,
     riskWeight: 0.85,
     source: 'OFFICIAL_SENSOR',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '25 mins ago',
     notes: 'Lake outflow inundating service lanes and left carriageway. Heavy traffic crawling.'
@@ -116,6 +118,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 24,
     riskWeight: 0.60,
     source: 'CITIZEN_REPORT',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '38 mins ago',
     notes: 'Ponding on left lanes causing hydroplaning risk at speed.'
@@ -132,6 +135,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 35,
     riskWeight: 0.80,
     source: 'CITIZEN_REPORT',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '18 mins ago',
     notes: 'Submerged dip under railway bridge. Two-wheelers turned back.'
@@ -150,6 +154,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 52,
     riskWeight: 0.98,
     source: 'OFFICIAL_SENSOR',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '8 mins ago',
     notes: 'Pump capacity exceeded. Water depth exceeding 1.8 feet. Submerged police barricades.'
@@ -166,6 +171,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 46,
     riskWeight: 0.92,
     source: 'OFFICIAL_SENSOR',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '15 mins ago',
     notes: 'Low-lying basin completely inundated. BEST buses diverting to flyover.'
@@ -182,6 +188,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 49,
     riskWeight: 0.95,
     source: 'CITIZEN_REPORT',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '22 mins ago',
     notes: 'Completely closed by traffic authorities due to high inundation.'
@@ -200,6 +207,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 38,
     riskWeight: 0.98,
     source: 'OFFICIAL_SENSOR',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '10 mins ago',
     notes: 'Flash water accumulation under rail bridge. Depth indicator showing 2 feet.'
@@ -216,6 +224,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 34,
     riskWeight: 0.82,
     source: 'OFFICIAL_SENSOR',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '20 mins ago',
     notes: 'Drainage outflow backwash from Yamuna barrage. Extreme congestion.'
@@ -232,6 +241,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 36,
     riskWeight: 0.94,
     source: 'CITIZEN_REPORT',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '30 mins ago',
     notes: 'Water level reached window line of stalled autorickshaw. Avoid at all costs.'
@@ -250,6 +260,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 40,
     riskWeight: 0.92,
     source: 'OFFICIAL_SENSOR',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '14 mins ago',
     notes: 'Lake catchment overflow over main carriageway. Water depth 1.5 ft.'
@@ -266,6 +277,7 @@ export const INITIAL_HAZARDS: HazardZone[] = [
     rainfallIntensityMmPerHour: 36,
     riskWeight: 0.85,
     source: 'CITIZEN_REPORT',
+    status: 'ACTIVE',
     verified: true,
     reportedAt: '35 mins ago',
     notes: 'Continuous waterlogging. Street drains concealed by surface water.'

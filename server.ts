@@ -4,7 +4,7 @@ import { fileURLToPath } from 'url';
 import dotenv from 'dotenv';
 import { createServer as createViteServer } from 'vite';
 import { handleRouteCalculation } from './src/server/handlers/routeHandler.ts';
-import { handleGetHazards, handleResetHazards } from './src/server/handlers/hazardsHandler.ts';
+import { handleGetHazards, handleResetHazards, handleSeedHazards } from './src/server/handlers/hazardsHandler.ts';
 import { handleGetReports, handleCreateReport } from './src/server/handlers/reportHandler.ts';
 import { handleGenerateBriefing } from './src/server/handlers/briefingHandler.ts';
 import { getWeatherAdapter } from './src/server/adapters/weatherAdapter.ts';
@@ -69,6 +69,13 @@ app.post('/api/ai-briefing', async (req, res) => {
 // POST /api/reset-hazards
 app.post('/api/reset-hazards', async (req, res) => {
   const result = await handleResetHazards();
+  return res.status(result.statusCode).json(result.data);
+});
+
+// POST /api/hazards/seed
+app.post('/api/hazards/seed', async (req, res) => {
+  const city = (req.query.city as string) || (req.body?.city as string) || '';
+  const result = await handleSeedHazards(city);
   return res.status(result.statusCode).json(result.data);
 });
 

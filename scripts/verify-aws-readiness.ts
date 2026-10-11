@@ -87,8 +87,8 @@ async function runVerification() {
     path: '/api/route',
     body: JSON.stringify({
       city: 'chennai',
-      origin: [13.0067, 80.2025], // Guindy
-      destination: [12.9382, 80.2335], // OMR Thoraipakkam
+      origin: [13.0125, 80.2225], // Little Mount / Guindy Corridor
+      destination: [12.9350, 80.2150], // Pallikaranai via Velachery
       vehicleId: 'sedan',
       vehicleClearanceCm: 16,
       scenarioId: 'chennai-velachery'
@@ -178,7 +178,7 @@ async function runVerification() {
   const briefingData = JSON.parse(briefingRes.body);
   assert(typeof briefingData.briefing === 'string' && briefingData.briefing.length > 20, 'Safety briefing returned meaningful explanation');
   assert(
-    briefingData.briefingSource === 'BEDROCK_AI' || briefingData.briefingSource === 'DETERMINISTIC_RULES',
+    briefingData.briefingSource === 'BEDROCK_AI' || briefingData.briefingSource === 'DETERMINISTIC_RULES' || briefingData.briefingSource === 'GEMINI_AI',
     `Briefing source is accurately tagged: ${briefingData.briefingSource}`
   );
 

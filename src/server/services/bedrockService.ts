@@ -1,6 +1,7 @@
 import { GoogleGenAI } from '@google/genai';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { BedrockValidationResult, BedrockBriefingResult } from '../types/api';
+import { logStructured } from '../utils/logger';
 
 export class BedrockService {
   private client: BedrockRuntimeClient | null = null;
@@ -29,14 +30,21 @@ export class BedrockService {
     if (hasAwsCreds) {
       try {
         this.client = new BedrockRuntimeClient({ region });
-      } catch {
+        console.log(`[BedrockService] Initialized with AWS Bedrock client (Region: ${region}, Model: ${modelId})`);
+      } catch (err: any) {
+        logStructured({
+          event: 'BEDROCK_ERROR',
+          operation: 'initialization',
+          error: err?.message || 'Failed to initialize BedrockRuntimeClient'
+        });
         this.client = null;
       }
     }
   }
 
   /**
-   * Validates flood image using Gemini AI, Amazon Bedrock, or robust fallback heuristics
+   * Validates flood image using Amazon Bedrock, Gemini AI, or robust fallback heuristics.
+   * Invariant: NEVER affects route calculation or safe-route validation.
    */
   async validateFloodImage(
     imageBase64?: string,
@@ -56,7 +64,83 @@ Strictly return a valid JSON object matching this schema:
   "recommendedAction": string
 }`;
 
-    // 1. Try Gemini Vision if available
+    // 1. Try AWS Bedrock first if client is configured
+    if (this.client && imageBase64 && imageBase64.includes('base64,')) {
+      try {
+        logStructured({
+          event: 'BEDROCK_REQUEST',
+          operation: 'validateFloodImage',
+          modelId: this.modelId
+        });
+
+        const mimeType = imageBase64.substring(5, imageBase64.indexOf(';'));
+        const base64Data = imageBase64.substring(imageBase64.indexOf('base64,') + 7);
+
+        const payload = {
+          anthropic_version: 'bedrock-2023-05-31',
+          max_tokens: 500,
+          messages: [
+            {
+              role: 'user',
+              content: [
+                {
+                  type: 'image',
+                  source: {
+                    type: 'base64',
+                    media_type: mimeType || 'image/jpeg',
+                    data: base64Data
+                  }
+                },
+                {
+                  type: 'text',
+                  text: prompt
+                }
+              ]
+            }
+          ]
+        };
+
+        const command = new InvokeModelCommand({
+          modelId: this.modelId,
+          contentType: 'application/json',
+          accept: 'application/json',
+          body: JSON.stringify(payload)
+        });
+
+        const response = await this.client.send(command, {
+          abortSignal: AbortSignal.timeout(10000)
+        });
+
+        const responseJson = JSON.parse(new TextDecoder().decode(response.body));
+        const textContent = responseJson.content?.[0]?.text;
+
+        if (textContent) {
+          const parsed = JSON.parse(textContent);
+          return {
+            isFlooded: Boolean(parsed.isFlooded),
+            confidence: Math.min(99, Math.max(70, Number(parsed.confidence) || 92)),
+            estimatedSeverity: parsed.estimatedSeverity || (reportedDepthCm >= 40 ? 'CRITICAL' : 'HIGH'),
+            estimatedWaterDepthCm: Number(parsed.estimatedWaterDepthCm) || reportedDepthCm,
+            estimatedDepthCategory: parsed.estimatedDepthCategory || 'KNEE_DEEP',
+            indicators: parsed.indicators || ['Standing water on asphalt', 'Road surface reflection'],
+            reasoning: parsed.reasoning || 'Visible water accumulation on road carriage lanes.',
+            recommendedAction: parsed.recommendedAction || 'Divert passenger vehicles to elevated corridor.',
+            analysisSource: 'BEDROCK_AI'
+          };
+        }
+      } catch (err: any) {
+        logStructured({
+          event: 'BEDROCK_ERROR',
+          operation: 'validateFloodImage',
+          modelId: this.modelId,
+          error: err?.message || 'Bedrock invocation failed',
+          errorType: err?.name || 'Unknown'
+        });
+        // Graceful fall through to Gemini or heuristic
+      }
+    }
+
+    // 2. Try Gemini Vision if Bedrock is unconfigured or failed
     if (this.geminiClient && imageBase64 && imageBase64.includes('base64,')) {
       try {
         const mimeType = imageBase64.substring(5, imageBase64.indexOf(';')) || 'image/jpeg';
@@ -94,76 +178,17 @@ Strictly return a valid JSON object matching this schema:
           };
         }
       } catch {
-        // Fall through to Bedrock or heuristic
+        // Fall through to heuristic
       }
     }
 
-    // 2. Try AWS Bedrock if client available
-    if (this.client && imageBase64 && imageBase64.includes('base64,')) {
-      try {
-        const mimeType = imageBase64.substring(5, imageBase64.indexOf(';'));
-        const base64Data = imageBase64.substring(imageBase64.indexOf('base64,') + 7);
-
-        const payload = {
-          anthropic_version: 'bedrock-2023-05-31',
-          max_tokens: 500,
-          messages: [
-            {
-              role: 'user',
-              content: [
-                {
-                  type: 'image',
-                  source: {
-                    type: 'base64',
-                    media_type: mimeType || 'image/jpeg',
-                    data: base64Data
-                  }
-                },
-                {
-                  type: 'text',
-                  text: prompt
-                }
-              ]
-            }
-          ]
-        };
-
-        const command = new InvokeModelCommand({
-          modelId: this.modelId,
-          contentType: 'application/json',
-          accept: 'application/json',
-          body: JSON.stringify(payload)
-        });
-
-        const response = await this.client.send(command);
-        const responseJson = JSON.parse(new TextDecoder().decode(response.body));
-        const textContent = responseJson.content?.[0]?.text;
-
-        if (textContent) {
-          const parsed = JSON.parse(textContent);
-          return {
-            isFlooded: Boolean(parsed.isFlooded),
-            confidence: Math.min(99, Math.max(70, Number(parsed.confidence) || 92)),
-            estimatedSeverity: parsed.estimatedSeverity || (reportedDepthCm >= 40 ? 'CRITICAL' : 'HIGH'),
-            estimatedWaterDepthCm: Number(parsed.estimatedWaterDepthCm) || reportedDepthCm,
-            estimatedDepthCategory: parsed.estimatedDepthCategory || 'KNEE_DEEP',
-            indicators: parsed.indicators || ['Standing water on asphalt', 'Road surface reflection'],
-            reasoning: parsed.reasoning || 'Visible water accumulation on road carriage lanes.',
-            recommendedAction: parsed.recommendedAction || 'Divert passenger vehicles to elevated corridor.',
-            analysisSource: 'BEDROCK_AI'
-          };
-        }
-      } catch {
-        // Fall through to deterministic heuristic fallback
-      }
-    }
-
-    // High-accuracy fallback heuristics (clearly marked)
+    // 3. High-accuracy deterministic fallback heuristic (strictly tagged)
     return this.fallbackHeuristicValidation(reportedDepthCm, userNotes);
   }
 
   /**
-   * Generates natural language driver safety briefing using Gemini AI, Amazon Bedrock, or deterministic templates
+   * Generates natural language driver safety briefing using Amazon Bedrock, Gemini AI, or deterministic templates.
+   * Invariant: NEVER alters route geometry or route risk classification.
    */
   async generateSafetyBriefing(
     fastestHazards: Array<{ name: string; waterDepthCm: number; severity: string }>,
@@ -188,28 +213,15 @@ The vehicle is a ${vehicleName}.
 The safe alternative adds +${timeDelta} minutes and +${distanceDelta} km.
 Write a 2-sentence urgent, driver-friendly safety briefing explaining why taking the safe detour is strongly advised.`;
 
-    // 1. Try Gemini
-    if (this.geminiClient) {
-      try {
-        const response = await this.geminiClient.models.generateContent({
-          model: 'gemini-3.1-flash-lite',
-          contents: prompt
-        });
-
-        if (response.text) {
-          return {
-            briefing: response.text.trim(),
-            briefingSource: 'GEMINI_AI'
-          };
-        }
-      } catch {
-        // Fall through to Bedrock
-      }
-    }
-
-    // 2. Try Bedrock
+    // 1. Try AWS Bedrock if client available
     if (this.client) {
       try {
+        logStructured({
+          event: 'BEDROCK_REQUEST',
+          operation: 'generateSafetyBriefing',
+          modelId: this.modelId
+        });
+
         const payload = {
           anthropic_version: 'bedrock-2023-05-31',
           max_tokens: 250,
@@ -228,7 +240,9 @@ Write a 2-sentence urgent, driver-friendly safety briefing explaining why taking
           body: JSON.stringify(payload)
         });
 
-        const response = await this.client.send(command);
+        const response = await this.client.send(command, {
+          abortSignal: AbortSignal.timeout(8000)
+        });
         const responseJson = JSON.parse(new TextDecoder().decode(response.body));
         const textContent = responseJson.content?.[0]?.text;
 
@@ -238,12 +252,38 @@ Write a 2-sentence urgent, driver-friendly safety briefing explaining why taking
             briefingSource: 'BEDROCK_AI'
           };
         }
+      } catch (err: any) {
+        logStructured({
+          event: 'BEDROCK_ERROR',
+          operation: 'generateSafetyBriefing',
+          modelId: this.modelId,
+          error: err?.message || 'Bedrock briefing failed',
+          errorType: err?.name || 'Unknown'
+        });
+        // Fall through to Gemini or deterministic template
+      }
+    }
+
+    // 2. Try Gemini
+    if (this.geminiClient) {
+      try {
+        const response = await this.geminiClient.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt
+        });
+
+        if (response.text) {
+          return {
+            briefing: response.text.trim(),
+            briefingSource: 'GEMINI_AI'
+          };
+        }
       } catch {
         // Fall through to deterministic template
       }
     }
 
-    // Deterministic vehicle-clearance-aware explanation
+    // 3. Deterministic vehicle-clearance-aware explanation (never fails)
     const worst = fastestHazards[0];
     const isTwoWheeler = vehicleName.toLowerCase().includes('bike') || vehicleName.toLowerCase().includes('two');
     const clearanceNote = isTwoWheeler

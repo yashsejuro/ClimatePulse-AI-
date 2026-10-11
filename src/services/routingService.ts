@@ -488,8 +488,8 @@ export async function calculateDualRoutes(
         const bypassWaypoints = generateBypassWaypoints(origin, destination, worstHazardMeta, activeCityHazards);
         console.log(`[ROUTING TRACE] Generated ${bypassWaypoints.length} candidate bypass waypoints`);
 
-        // Item 1: Run the bypass calls in parallel with Promise.all (max 5)
-        const cappedWaypoints = bypassWaypoints.slice(0, 5);
+        // Run bypass calls in parallel with Promise.all across candidate waypoints
+        const cappedWaypoints = bypassWaypoints;
 
         const bypassResults = await Promise.all(
           cappedWaypoints.map((wp) => fetchOSRMRouteResult([origin, wp, destination], false))
