@@ -1,4 +1,5 @@
 import React, { useState, useEffect, lazy, Suspense } from 'react';
+import { HelmetProvider } from 'react-helmet-async';
 import { LandingHeroPage } from './components/LandingHeroPage';
 import { AwsArchitectureModal } from './components/AwsArchitectureModal';
 import { CityId } from './types';
@@ -190,7 +191,7 @@ export default function App() {
   };
 
   return (
-    <>
+    <HelmetProvider>
       <div className="min-h-screen bg-slate-50 transition-opacity duration-200 ease-out">
         {currentView === 'landing' ? (
           <div key="landing" className="animate-fade-in">
@@ -219,6 +220,6 @@ export default function App() {
         isOpen={isAwsModalOpen}
         onClose={() => setIsAwsModalOpen(false)}
       />
-    </>
+    </HelmetProvider>
   );
 }

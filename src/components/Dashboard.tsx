@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Helmet } from 'react-helmet-async';
 import { Navbar } from './Navbar';
 import { Map } from './Map';
 import { NavigationCard } from './NavigationCard';
@@ -679,6 +680,18 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   return (
     <div className="relative w-full h-screen overflow-hidden flex flex-col bg-white text-gray-900 font-sans select-none">
+      <Helmet>
+        <title>{`ClimatePulse AI – Live Navigation Dashboard (${cityMeta.name})`}</title>
+        <meta
+          name="description"
+          content={`Live flood-aware navigation dashboard for ${cityMeta.name}. Compare fastest vs. safer routes, monitor water depth hazards, and avoid inundated corridors.`}
+        />
+        <meta property="og:title" content={`ClimatePulse AI – Live Navigation Dashboard (${cityMeta.name})`} />
+        <meta
+          property="og:description"
+          content={`Live flood-aware navigation dashboard for ${cityMeta.name}. Compare fastest vs. safer routes, monitor water depth hazards, and avoid inundated corridors.`}
+        />
+      </Helmet>
       {/* Toast Notification Banner */}
       {locationToast && (
         <div

@@ -1,4 +1,5 @@
 import React, { useState } from 'react';
+import { Helmet } from 'react-helmet-async';
 import {
   ShieldCheck,
   Cloud,
@@ -130,6 +131,76 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
 
   const activeCorridor = PREVIEW_CORRIDORS[selectedCorridorIndex];
 
+  // Dynamic SEO metadata calibrated to active preview corridor
+  const pageTitle = activeCorridor
+    ? `ClimatePulse AI – ${activeCorridor.cityName} Flood Bypass & Safe Navigation`
+    : 'ClimatePulse AI – Flood-Aware Safe Navigation & Climate Routing';
+
+  const pageDescription = activeCorridor
+    ? `Navigate safely around urban floods in ${activeCorridor.cityName}. Real-time water depth telemetry avoids ${activeCorridor.hazardName} and flooded roads.`
+    : 'Climate-aware navigation platform recommending safer routes during flood, waterlogging, and rainfall hazards across Bengaluru, Mumbai, Delhi, and Chennai.';
+
+  const canonicalUrl = typeof window !== 'undefined'
+    ? `${window.location.origin}${window.location.pathname}`
+    : 'https://climatepulse.ai';
+
+  // Schema.org structured data (WebApplication & FAQPage)
+  const structuredData = {
+    '@context': 'https://schema.org',
+    '@graph': [
+      {
+        '@type': 'WebApplication',
+        'name': 'ClimatePulse AI',
+        'applicationCategory': 'NavigationApplication',
+        'operatingSystem': 'All',
+        'description': pageDescription,
+        'url': canonicalUrl,
+        'offers': {
+          '@type': 'Offer',
+          'price': '0',
+          'priceCurrency': 'USD'
+        }
+      },
+      {
+        '@type': 'FAQPage',
+        'mainEntity': [
+          {
+            '@type': 'Question',
+            'name': 'Where does ClimatePulse get its real-time weather and rainfall data?',
+            'acceptedAnswer': {
+              '@type': 'Answer',
+              'text': 'Rainfall intensity and atmospheric pressure are fetched from open meteorology feeds (Open-Meteo API and OpenWeatherMap). The backend tracks active precipitation rates (mm/h) and computes a Cumulative Rainfall Index (CRI) for each urban sector.'
+            }
+          },
+          {
+            '@type': 'Question',
+            'name': 'How are flood hazard zones and surveyed underpasses identified?',
+            'acceptedAnswer': {
+              '@type': 'Answer',
+              'text': 'Known vulnerable points—such as low-lying railway underpasses, canal bridges, and saucer depressions—are curated from official civic authorities (BBMP, BMC, MCD, GCC) combined with OpenStreetMap topographical node surveys.'
+            }
+          },
+          {
+            '@type': 'Question',
+            'name': 'How frequently is flood and road safety data updated?',
+            'acceptedAnswer': {
+              '@type': 'Answer',
+              'text': 'Weather telemetry and precipitation gauges refresh every 15 minutes. Citizen waterlogging reports stream instantly to our datastore, and active dashboard sessions poll for high-severity hazard updates every 30 seconds.'
+            }
+          },
+          {
+            '@type': 'Question',
+            'name': 'How are citizen reports verified against false alerts?',
+            'acceptedAnswer': {
+              '@type': 'Answer',
+              'text': 'Incoming reports pass through automated hydrological plausibility checks and AI vision validation pipelines to confirm water presence and vehicle submersion before broadcasting a warning.'
+            }
+          }
+        ]
+      }
+    ]
+  };
+
   const scrollToSection = (e: React.MouseEvent, id: string) => {
     e.preventDefault();
     setMobileMenuOpen(false);
@@ -141,6 +212,37 @@ export const LandingHeroPage: React.FC<LandingHeroPageProps> = ({
 
   return (
     <div className="min-h-screen w-full bg-white text-gray-900 font-sans antialiased selection:bg-emerald-100 selection:text-emerald-900 overflow-x-hidden">
+      <Helmet>
+        {/* Dynamic Page Title */}
+        <title>{pageTitle}</title>
+
+        {/* Search Engine Meta */}
+        <meta name="description" content={pageDescription} />
+        <meta
+          name="keywords"
+          content="flood navigation, climate-aware routing, urban flood avoidance, waterlogging alerts, live road safety, hydrological routing, monsoon bypass, safe driving routes"
+        />
+        <meta name="robots" content="index, follow" />
+        <link rel="canonical" href={canonicalUrl} />
+
+        {/* OpenGraph Social Cards */}
+        <meta property="og:type" content="website" />
+        <meta property="og:site_name" content="ClimatePulse AI" />
+        <meta property="og:title" content={pageTitle} />
+        <meta property="og:description" content={pageDescription} />
+        <meta property="og:url" content={canonicalUrl} />
+        <meta property="og:locale" content="en_US" />
+
+        {/* Twitter Cards */}
+        <meta name="twitter:card" content="summary_large_image" />
+        <meta name="twitter:title" content={pageTitle} />
+        <meta name="twitter:description" content={pageDescription} />
+
+        {/* Schema.org JSON-LD Structured Data */}
+        <script type="application/ld+json">
+          {JSON.stringify(structuredData)}
+        </script>
+      </Helmet>
       {/* ---------------------------------------------------- */}
       {/* NAVBAR */}
       {/* ---------------------------------------------------- */}
