@@ -77,6 +77,7 @@ export const WeatherRiskGauge: React.FC<WeatherRiskGaugeProps> = ({
               disabled={isRefreshing}
               className="text-gray-400 hover:text-gray-600 p-0.5 rounded cursor-pointer disabled:opacity-50"
               title="Refresh real-time weather"
+              aria-label="Refresh real-time weather"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-sky-600' : ''}`} />
             </button>
@@ -117,6 +118,7 @@ export const WeatherRiskGauge: React.FC<WeatherRiskGaugeProps> = ({
             disabled={isRefreshing}
             className="flex items-center gap-1 px-2 py-1 rounded bg-gray-50 hover:bg-gray-100 border border-gray-200 text-[11px] text-gray-600 font-medium cursor-pointer transition-colors disabled:opacity-50"
             title="Fetch real-time weather at selected location"
+            aria-label="Fetch real-time weather at selected location"
           >
             <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-sky-600' : ''}`} />
             <span className="hidden sm:inline">{isRefreshing ? 'Syncing...' : 'Sync'}</span>
@@ -197,6 +199,8 @@ export const WeatherRiskGauge: React.FC<WeatherRiskGaugeProps> = ({
         <button
           type="button"
           onClick={() => setShowExplanation(!showExplanation)}
+          aria-expanded={showExplanation}
+          aria-controls="cri-explanation"
           className="text-gray-500 hover:text-gray-700 underline flex items-center gap-0.5 cursor-pointer"
         >
           <Info className="w-2.5 h-2.5" />
@@ -205,7 +209,7 @@ export const WeatherRiskGauge: React.FC<WeatherRiskGaugeProps> = ({
       </div>
 
       {showExplanation && (
-        <div className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-[11px] text-gray-700 space-y-1">
+        <div id="cri-explanation" className="p-2.5 bg-gray-50 rounded-lg border border-gray-200 text-[11px] text-gray-700 space-y-1">
           <div className="font-semibold text-gray-900">Deterministic Risk Formula:</div>
           <div className="font-mono text-[10px] text-gray-600 bg-white p-1 rounded border border-gray-200">
             Base Risk = min(15, round((Rainfall mm/h ÷ 50) × 12))
