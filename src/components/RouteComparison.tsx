@@ -91,36 +91,44 @@ export const RouteComparison: React.FC<RouteComparisonProps> = ({
             </span>
           </div>
 
-          <div className="flex items-baseline justify-between mb-2">
-            <div>
-              <span className="text-2xl font-bold text-gray-900">{safe.durationMinutes}</span>
-              <span className="text-xs text-gray-500 ml-1">min</span>
-              <span className="text-xs text-gray-400 ml-1.5">({safe.distanceKm} km)</span>
-            </div>
-            <div className="text-right">
-              <div className="text-[10px] text-gray-500 font-medium uppercase">Risk Score</div>
-              <div className="text-sm font-bold text-emerald-700">{safe.riskScore} / 100</div>
-            </div>
-          </div>
+          {safe ? (
+            <>
+              <div className="flex items-baseline justify-between mb-2">
+                <div>
+                  <span className="text-2xl font-bold text-gray-900">{safe.durationMinutes}</span>
+                  <span className="text-xs text-gray-500 ml-1">min</span>
+                  <span className="text-xs text-gray-400 ml-1.5">({safe.distanceKm} km)</span>
+                </div>
+                <div className="text-right">
+                  <div className="text-[10px] text-gray-500 font-medium uppercase">Risk Score</div>
+                  <div className="text-sm font-bold text-emerald-700">{safe.riskScore} / 100</div>
+                </div>
+              </div>
 
-          {/* Risk Progress Bar */}
-          <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2.5">
-            <div
-              className="h-full bg-emerald-600 rounded-full"
-              style={{ width: `${Math.max(8, safe.riskScore)}%` }}
-            />
-          </div>
+              {/* Risk Progress Bar */}
+              <div className="w-full h-1.5 bg-gray-200 rounded-full overflow-hidden mb-2.5">
+                <div
+                  className="h-full bg-emerald-600 rounded-full"
+                  style={{ width: `${Math.max(8, safe.riskScore)}%` }}
+                />
+              </div>
 
-          <div className="space-y-1 text-xs text-gray-600">
-            <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
-              <span>Passable for your clearance</span>
+              <div className="space-y-1 text-xs text-gray-600">
+                <div className="flex items-center gap-1.5 text-emerald-800 font-medium">
+                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-600"></span>
+                  <span>Passable for your clearance</span>
+                </div>
+                <div className="flex items-center gap-1.5 text-gray-600">
+                  <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
+                  <span>Bypasses low-lying bottlenecks</span>
+                </div>
+              </div>
+            </>
+          ) : (
+            <div className="text-xs text-amber-800 py-3">
+              No flood-safe alternate route available.
             </div>
-            <div className="flex items-center gap-1.5 text-gray-600">
-              <span className="w-1.5 h-1.5 rounded-full bg-gray-400"></span>
-              <span>Bypasses low-lying bottlenecks</span>
-            </div>
-          </div>
+          )}
         </div>
 
         {/* FASTEST ROUTE CARD */}

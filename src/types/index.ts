@@ -25,6 +25,7 @@ export interface HazardZone {
   rainfallIntensityMmPerHour: number;
   riskWeight: number; // 0.0 to 1.0
   source: 'OFFICIAL_SENSOR' | 'CITIZEN_REPORT' | 'SATELLITE_NOWCAST';
+  status?: 'active' | 'resolved' | 'ACTIVE' | 'RESOLVED' | string;
   verified: boolean;
   reportedAt: string;
   notes: string;
@@ -36,6 +37,8 @@ export interface IntersectedHazard {
   severity: SeverityLevel;
   waterDepthCm: number;
   distanceFromStartKm: number;
+  minimumDistanceMeters?: number;
+  affectedSegmentIndex?: number;
 }
 
 export interface RouteOption {
@@ -45,14 +48,18 @@ export interface RouteOption {
   riskScore: number; // 0 - 100
   riskCategory: 'SAFE' | 'CAUTION' | 'HAZARDOUS';
   coordinates: [number, number][]; // [lat, lng]
+  geometry?: [number, number][]; // [lat, lng] polyline geometry
   hazardsIntersected: IntersectedHazard[];
   explanation: string;
-  roadNames: string[];
+  roadNames?: string[];
+  longDetour?: boolean;
 }
 
 export interface RouteComparisonResponse {
   fastest: RouteOption;
-  safe: RouteOption;
+  safe: RouteOption | null;
+  safeRouteFound: boolean;
+  noSafeRouteReason?: string | null;
   riskDeltaPercent: number; // e.g. -75%
   timeDeltaMinutes: number; // e.g. +6
   distanceDeltaKm: number; // e.g. +2.4

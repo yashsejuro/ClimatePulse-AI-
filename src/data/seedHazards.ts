@@ -393,3 +393,12 @@ export const CITY_CENTERS: Record<string, { name: string; center: [number, numbe
     zoom: 13
   }
 };
+
+// Startup check: log how many seeded hazards lack city or status
+(() => {
+  const missingCityCount = INITIAL_HAZARDS.filter((h) => !h.city).length;
+  const missingStatusCount = INITIAL_HAZARDS.filter((h) => !h.status).length;
+  console.log(
+    `[STARTUP CHECK] Seeded hazards: ${INITIAL_HAZARDS.length} total. Missing city: ${missingCityCount}, Missing status: ${missingStatusCount}.`
+  );
+})();

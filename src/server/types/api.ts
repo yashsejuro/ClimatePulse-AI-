@@ -53,10 +53,10 @@ export interface BedrockValidationResult {
   indicators: string[];
   reasoning: string;
   recommendedAction: string;
-  analysisSource: 'BEDROCK_AI' | 'FALLBACK_HEURISTIC';
+  analysisSource: 'GEMINI_AI' | 'BEDROCK_AI' | 'FALLBACK_HEURISTIC';
 }
 
 export interface BedrockBriefingResult {
   briefing: string;
-  briefingSource: 'BEDROCK_AI' | 'DETERMINISTIC_RULES';
+  briefingSource: 'GEMINI_AI' | 'BEDROCK_AI' | 'DETERMINISTIC_RULES';
 }

@@ -1,9 +1,8 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Navbar } from './components/Navbar';
 import { Map } from './components/Map';
 import { NavigationCard } from './components/NavigationCard';
 import { CitizenReportModal } from './components/CitizenReportModal';
-import { HazardsListModal } from './components/HazardsListModal';
 import {
   CityId,
   HazardZone,
@@ -20,66 +19,59 @@ import {
   PRESET_SCENARIOS,
   VEHICLE_PROFILES
 } from './data/seedHazards';
-import { calculateDualRoutes } from './services/routingService';
 import { resolveLocation, PlaceResult } from './services/geocodingService';
-import { Layers, Eye, EyeOff } from 'lucide-react';
 
 export default function App() {
-  // 1. City state (Canonical city ID)
+  const latestRequestIdRef = React.useRef(0);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+
+  // 1. City state
   const [currentCity, setCurrentCity] = useState<CityId>('bengaluru');
   const [weather, setWeather] = useState<CityWeather>(INITIAL_WEATHER.bengaluru);
   const [hazards, setHazards] = useState<HazardZone[]>(INITIAL_HAZARDS);
   const [citizenReports, setCitizenReports] = useState<CitizenReport[]>([]);
 
-  // 2. Search & Location State (Explicit separation of input text vs resolved coordinates)
+  // 2. Search & Location State (Screen 1 vs Screen 2)
   const cityScenarios = PRESET_SCENARIOS.filter((s) => s.city === currentCity);
-  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(
-    cityScenarios[0]?.id || null
-  );
-
   const initialPreset = cityScenarios[0] || PRESET_SCENARIOS[0];
-  const [originText, setOriginText] = useState<string>(initialPreset.origin.name);
-  const [destinationText, setDestinationText] = useState<string>(initialPreset.destination.name);
+
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(
+    initialPreset?.id || null
+  );
+  const [originText, setOriginText] = useState<string>(initialPreset?.origin.name || 'Bengaluru');
+  const [destinationText, setDestinationText] = useState<string>(
+    initialPreset?.destination.name || 'Electronic City'
+  );
   const [resolvedOriginCoords, setResolvedOriginCoords] = useState<[number, number]>(
-    initialPreset.origin.coords
+    initialPreset?.origin.coords || [12.9716, 77.5946]
   );
   const [resolvedDestCoords, setResolvedDestCoords] = useState<[number, number]>(
-    initialPreset.destination.coords
+    initialPreset?.destination.coords || [12.8399, 77.677]
   );
-
   const [selectedVehicle, setSelectedVehicle] = useState<VehicleType>('sedan');
 
-  // 3. Evaluation & Route State
+  // 3. Evaluation & Route State (Screen 2 is active when comparison !== null)
   const [comparison, setComparison] = useState<RouteComparisonResponse | null>(null);
   const [selectedRouteType, setSelectedRouteType] = useState<'FASTEST' | 'SAFE'>('SAFE');
   const [isLoading, setIsLoading] = useState<boolean>(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [aiBriefing, setAiBriefing] = useState<string | null>(null);
 
-  // 4. Controlled Simulation State (Explicit user control: open mode, play, pause, stop)
-  const [simulationMode, setSimulationMode] = useState<boolean>(false);
-  const [isSimPlaying, setIsSimPlaying] = useState<boolean>(false);
-  const [simulationIndex, setSimulationIndex] = useState<number>(0);
-  const [simulationPosition, setSimulationPosition] = useState<[number, number] | null>(null);
-  const simulationTimerRef = useRef<any>(null);
-
-  // 5. UI Modals & Map options
+  // 4. Map & Modals State
   const [isReportModalOpen, setIsReportModalOpen] = useState(false);
-  const [isHazardsListOpen, setIsHazardsListOpen] = useState(false);
   const [showHazards, setShowHazards] = useState(true);
   const [mapTileTheme, setMapTileTheme] = useState<'dark' | 'streets'>('streets');
 
-  // City change handler: switches city context without silently overwriting active custom searches
+  // City change handler
   const handleSelectCity = (newCity: CityId) => {
-    console.log(`[CITY CHANGE] Switching to: ${newCity}`);
+    console.log(`[handleSelectCity] Setting currentCity to stable id: "${newCity}"`);
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setCurrentCity(newCity);
+    setComparison(null); // Return to Screen 1 on city switch
+    setSelectedRouteType('SAFE');
 
-    // Stop any running simulation
-    setSimulationMode(false);
-    setIsSimPlaying(false);
-    setSimulationPosition(null);
-
-    // Load initial scenario defaults for this newly selected city
     const scenariosForCity = PRESET_SCENARIOS.filter((s) => s.city === newCity);
     const firstScenario = scenariosForCity[0];
 
@@ -92,11 +84,9 @@ export default function App() {
       setErrorMessage(null);
     } else {
       setActiveScenarioId(null);
-      const cMeta = CITIES[newCity] || CITIES.bengaluru;
-      setOriginText(`${cMeta.name} Center`);
-      setDestinationText(`${cMeta.name} North`);
-      setResolvedOriginCoords(cMeta.center);
-      setResolvedDestCoords([cMeta.center[0] + 0.05, cMeta.center[1] + 0.05]);
+      setOriginText('');
+      setDestinationText('');
+      setComparison(null);
       setErrorMessage(null);
     }
   };
@@ -136,14 +126,13 @@ export default function App() {
     dest: [number, number];
     scenarioId?: string;
   }) => {
+    abortControllerRef.current?.abort();
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    const requestId = ++latestRequestIdRef.current;
     setIsLoading(true);
     setErrorMessage(null);
-    // Stop any simulation
-    setSimulationMode(false);
-    setIsSimPlaying(false);
-    setSimulationPosition(null);
-
-    const vehicle = VEHICLE_PROFILES.find((v) => v.id === selectedVehicle) || VEHICLE_PROFILES[0];
 
     const payload = {
       origin: params.origin,
@@ -153,118 +142,92 @@ export default function App() {
       city: currentCity
     };
 
-    console.log('[ROUTE REQUEST] payload:', payload);
-
     try {
-      let result: RouteComparisonResponse | null = null;
+      const response = await fetch('/api/route', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload),
+        signal: controller.signal
+      });
+      const data = await response.json().catch(() => null);
 
-      // 1. Dual-source execution: Call backend /api/route first
-      try {
-        const response = await fetch('/api/route', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
-        });
-        if (response.ok) {
-          result = await response.json();
-          console.log('[ROUTE RESPONSE] status: 200 via backend API', result);
-        } else {
-          const errData = await response.json().catch(() => ({}));
-          console.warn('[ROUTE RESPONSE] server returned error:', response.status, errData);
-        }
-      } catch (networkErr) {
-        console.warn('[ROUTE REQUEST] API network error, trying client fallback:', networkErr);
+      if (!response.ok) {
+        throw new Error(data?.error || 'Routing service unavailable');
       }
 
-      // 2. Client-side fallback if server fails
-      if (!result) {
-        console.log('[ROUTE CALCULATION] Falling back to client-side routing engine');
-        result = await calculateDualRoutes(
-          params.origin,
-          params.dest,
-          hazards,
-          vehicle,
-          weather.rainfallMmPerHour,
-          params.scenarioId
-        );
+      if (!data || !data.fastest) {
+        throw new Error('Routing service unavailable');
       }
 
-      if (!result || !result.fastest || !result.safe) {
-        throw new Error('Could not calculate a route.');
+      // Ignore responses from stale or aborted requests
+      if (requestId !== latestRequestIdRef.current || controller.signal.aborted) {
+        return;
       }
 
-      console.log(
-        `[ROUTE RESPONSE] Success: Safe ${result.safe.distanceKm}km (${result.safe.durationMinutes}min), Fastest ${result.fastest.distanceKm}km (${result.fastest.durationMinutes}min)`
-      );
-
-      setComparison(result);
-      setSelectedRouteType('SAFE');
-      setAiBriefing(result.safetySummary);
+      setComparison(data);
+      setSelectedRouteType(data.safeRouteFound && data.safe ? 'SAFE' : 'FASTEST');
     } catch (err: any) {
-      console.error('[ROUTE CALCULATION ERROR]:', err);
-      setErrorMessage(err?.message || 'Could not calculate a route.');
+      if (controller.signal.aborted || err?.name === 'AbortError' || requestId !== latestRequestIdRef.current) {
+        return;
+      }
+      setErrorMessage(err?.message || 'Routing service unavailable');
       setComparison(null);
+      setSelectedRouteType('SAFE');
     } finally {
-      setIsLoading(false);
+      if (abortControllerRef.current === controller || requestId === latestRequestIdRef.current) {
+        setIsLoading(false);
+      }
     }
   };
 
-  // Run calculation when city changes
-  useEffect(() => {
-    executeRouteCalculation({
-      origin: resolvedOriginCoords,
-      dest: resolvedDestCoords,
-      scenarioId: activeScenarioId || undefined
-    });
-  }, [currentCity, selectedVehicle]);
-
   // Primary user action: Find Safer Route
   const handleSearchRoute = async () => {
-    console.log('[ROUTE SEARCH]');
-    console.log('origin input:', originText);
-    console.log('destination input:', destinationText);
-
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
     setIsLoading(true);
     setErrorMessage(null);
-
-    // Clear scenario ID for manual searches so it doesn't lock to demo preset
+    setComparison(null);
+    setSelectedRouteType('SAFE');
     setActiveScenarioId(null);
 
     try {
-      // Trace: Origin input -> destination input -> geocoding -> resolved coordinates
       const [originResolved, destResolved] = await Promise.all([
         resolveLocation(originText, currentCity),
         resolveLocation(destinationText, currentCity)
       ]);
 
-      console.log('[GEOCODE]');
-      console.log('origin coordinates:', originResolved.coords, `(${originResolved.name})`);
-      console.log('destination coordinates:', destResolved.coords, `(${destResolved.name})`);
-
+      // After resolving, set the input text to the resolved name
+      setOriginText(originResolved.name);
+      setDestinationText(destResolved.name);
       setResolvedOriginCoords(originResolved.coords);
       setResolvedDestCoords(destResolved.coords);
 
       await executeRouteCalculation({
         origin: originResolved.coords,
         dest: destResolved.coords,
-        scenarioId: undefined // Explicitly undefined: NEVER use preset for manual search!
+        scenarioId: undefined
       });
     } catch (err: any) {
-      console.error('[SEARCH FAILED]:', err.message);
       setIsLoading(false);
-      setErrorMessage(err?.message || 'Could not find that location.');
+      setErrorMessage(err?.message || `Could not find location: ${originText}`);
       setComparison(null);
+      setSelectedRouteType('SAFE');
     }
   };
 
-  // Handle Preset Corridor Click (1-click demo routes)
+  // Handle Preset Corridor Click (1-click demo corridors)
   const handleSelectScenario = (scenario: PresetScenario) => {
-    console.log(`[SCENARIO SELECT] ${scenario.id}: ${scenario.title}`);
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setActiveScenarioId(scenario.id);
     setOriginText(scenario.origin.name);
     setDestinationText(scenario.destination.name);
     setResolvedOriginCoords(scenario.origin.coords);
     setResolvedDestCoords(scenario.destination.coords);
+    setComparison(null);
+    setSelectedRouteType('SAFE');
     setErrorMessage(null);
 
     executeRouteCalculation({
@@ -274,26 +237,44 @@ export default function App() {
     });
   };
 
-  // Handle Autocomplete Place Selection
+  // Autocomplete selection
   const handleSelectOriginPlace = (place: PlaceResult) => {
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setActiveScenarioId(null);
     setOriginText(place.name);
     setResolvedOriginCoords(place.coords);
+    setComparison(null);
+    setSelectedRouteType('SAFE');
     setErrorMessage(null);
   };
 
   const handleSelectDestinationPlace = (place: PlaceResult) => {
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setActiveScenarioId(null);
     setDestinationText(place.name);
     setResolvedDestCoords(place.coords);
+    setComparison(null);
+    setSelectedRouteType('SAFE');
     setErrorMessage(null);
   };
 
-  // Handle Map Click to set custom destination
+  // Map Click to set custom destination
   const handleMapClick = (coords: [number, number]) => {
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setActiveScenarioId(null);
     setResolvedDestCoords(coords);
-    setDestinationText(`Pinned Location (${coords[0].toFixed(4)}, ${coords[1].toFixed(4)})`);
+    setDestinationText(`Pinned Point (${coords[0].toFixed(3)}, ${coords[1].toFixed(3)})`);
+    setComparison(null);
+    setSelectedRouteType('SAFE');
     setErrorMessage(null);
 
     executeRouteCalculation({
@@ -303,107 +284,43 @@ export default function App() {
     });
   };
 
-  // Handle text input changes
+  // Text inputs
   const handleChangeOrigin = (val: string) => {
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setActiveScenarioId(null);
     setOriginText(val);
+    setComparison(null);
+    setSelectedRouteType('SAFE');
     if (errorMessage) setErrorMessage(null);
   };
 
   const handleChangeDestination = (val: string) => {
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setActiveScenarioId(null);
     setDestinationText(val);
+    setComparison(null);
+    setSelectedRouteType('SAFE');
     if (errorMessage) setErrorMessage(null);
   };
 
-  // Reset / Modify Search
+  // Reset / Edit Search
   const handleNewSearch = () => {
+    latestRequestIdRef.current++;
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    setIsLoading(false);
     setComparison(null);
-    setSimulationMode(false);
-    setIsSimPlaying(false);
-    setSimulationPosition(null);
+    setSelectedRouteType('SAFE');
     setErrorMessage(null);
   };
 
-  // ---------------- SIMULATION LOGIC: Controlled by user (NO AUTOPLAY) ----------------
-  const currentRouteCoords = comparison
-    ? (selectedRouteType === 'SAFE' ? comparison.safe.coordinates : comparison.fastest.coordinates)
-    : [];
-
-  const handleEnterSimulation = () => {
-    setSimulationMode(true);
-    setIsSimPlaying(false); // DO NOT AUTOPLAY! Wait for user to click Start
-    setSimulationIndex(0);
-    if (currentRouteCoords.length > 0) {
-      setSimulationPosition(currentRouteCoords[0]);
-    }
-  };
-
-  const handleStartSimulation = () => {
-    setIsSimPlaying(true);
-  };
-
-  const handlePauseSimulation = () => {
-    setIsSimPlaying(false);
-    if (simulationTimerRef.current) {
-      clearInterval(simulationTimerRef.current);
-      simulationTimerRef.current = null;
-    }
-  };
-
-  const handleStopSimulation = () => {
-    setIsSimPlaying(false);
-    setSimulationMode(false);
-    setSimulationIndex(0);
-    setSimulationPosition(null);
-    if (simulationTimerRef.current) {
-      clearInterval(simulationTimerRef.current);
-      simulationTimerRef.current = null;
-    }
-  };
-
-  // Animation frame / interval execution ONLY when isSimPlaying === true
-  useEffect(() => {
-    if (!simulationMode || !isSimPlaying || currentRouteCoords.length === 0) {
-      if (simulationTimerRef.current) {
-        clearInterval(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      }
-      return;
-    }
-
-    simulationTimerRef.current = setInterval(() => {
-      setSimulationIndex((prev) => {
-        const next = prev + 1;
-        if (next >= currentRouteCoords.length) {
-          setIsSimPlaying(false);
-          if (simulationTimerRef.current) {
-            clearInterval(simulationTimerRef.current);
-            simulationTimerRef.current = null;
-          }
-          return prev;
-        }
-        setSimulationPosition(currentRouteCoords[next]);
-        return next;
-      });
-    }, 280);
-
-    return () => {
-      if (simulationTimerRef.current) {
-        clearInterval(simulationTimerRef.current);
-        simulationTimerRef.current = null;
-      }
-    };
-  }, [simulationMode, isSimPlaying, currentRouteCoords]);
-
-  // Clean up timer on unmount
-  useEffect(() => {
-    return () => {
-      if (simulationTimerRef.current) clearInterval(simulationTimerRef.current);
-    };
-  }, []);
-
-  // Handle Citizen Report Submission
+  // Citizen report submission
   const handleSubmitReport = async (reportData: {
     city: CityId;
     location: [number, number];
@@ -447,25 +364,17 @@ export default function App() {
           notes: reportData.userNotes
         };
         setHazards((prev) => [newHazard, ...prev]);
-
-        responseData = {
-          success: true,
-          validation: {
-            isFlooded: true,
-            confidence: 89,
-            estimatedSeverity: newHazard.severity,
-            estimatedWaterDepthCm: reportData.waterDepthCm,
-            reasoning: 'Verified flood hazard recorded into live telemetry layer.'
-          }
-        };
+        responseData = { success: true };
       }
 
-      // Recalculate route to reflect new hazard
-      executeRouteCalculation({
-        origin: resolvedOriginCoords,
-        dest: resolvedDestCoords,
-        scenarioId: undefined
-      });
+      // If comparison is active, refresh route to immediately reflect the new hazard
+      if (comparison) {
+        executeRouteCalculation({
+          origin: resolvedOriginCoords,
+          dest: resolvedDestCoords,
+          scenarioId: undefined
+        });
+      }
 
       return responseData;
     } catch (err) {
@@ -473,33 +382,20 @@ export default function App() {
     }
   };
 
-  const handleResetData = async () => {
-    setHazards(INITIAL_HAZARDS);
-    try {
-      await fetch('/api/reset-hazards', { method: 'POST' });
-    } catch {}
-    executeRouteCalculation({
-      origin: resolvedOriginCoords,
-      dest: resolvedDestCoords,
-      scenarioId: activeScenarioId || undefined
-    });
-  };
-
   const cityMeta = CITIES[currentCity] || CITIES.bengaluru;
 
   return (
-    <div className="relative w-full h-screen overflow-hidden flex flex-col bg-gray-50 text-gray-900 font-sans selection:bg-emerald-100 selection:text-emerald-900">
-      {/* Top Navbar with canonical City selection */}
+    <div className="relative w-full h-screen overflow-hidden flex flex-col bg-white text-gray-900 font-sans select-none">
+      {/* Simple Clean Navbar */}
       <Navbar
         currentCity={currentCity}
         onSelectCity={handleSelectCity}
         onOpenReportModal={() => setIsReportModalOpen(true)}
-        onResetData={handleResetData}
       />
 
-      {/* Main Map Canvas Area (Full Viewport Height) */}
+      {/* Main Map Canvas Area */}
       <div className="relative flex-1 w-full h-[calc(100vh-56px)] overflow-hidden">
-        {/* Full-bleed Leaflet Map */}
+        {/* Full Interactive Background Map */}
         <Map
           center={cityMeta.center}
           zoom={cityMeta.zoom}
@@ -512,13 +408,14 @@ export default function App() {
           origin={{ name: originText, coords: resolvedOriginCoords }}
           destination={{ name: destinationText, coords: resolvedDestCoords }}
           onMapClick={handleMapClick}
-          simulationPosition={simulationPosition}
           showHazards={showHazards}
+          onToggleHazards={() => setShowHazards((prev) => !prev)}
           mapTileTheme={mapTileTheme}
+          onToggleTheme={() => setMapTileTheme((t) => (t === 'streets' ? 'dark' : 'streets'))}
         />
 
-        {/* Floating Navigation Card (Google/Apple Maps style on left) */}
-        <div className="absolute top-4 left-4 z-20 w-96 sm:w-[410px] max-w-[calc(100vw-32px)]">
+        {/* Compact Floating Navigation Panel (Desktop: Floating card; Mobile: Bottom sheet) */}
+        <div className="absolute top-4 left-4 z-20 w-[360px] sm:w-[380px] max-w-[calc(100vw-32px)] max-sm:fixed max-sm:top-auto max-sm:bottom-4 max-sm:left-3 max-sm:right-3 max-sm:w-auto max-sm:z-30">
           <NavigationCard
             city={currentCity}
             scenarios={cityScenarios}
@@ -535,51 +432,14 @@ export default function App() {
             comparison={comparison}
             selectedRouteType={selectedRouteType}
             onSelectRouteType={setSelectedRouteType}
+            onNewSearch={handleNewSearch}
             selectedVehicle={selectedVehicle}
             onSelectVehicle={setSelectedVehicle}
-            simulationMode={simulationMode}
-            isSimPlaying={isSimPlaying}
-            simulationStep={simulationIndex}
-            totalSteps={currentRouteCoords.length}
-            onEnterSimulation={handleEnterSimulation}
-            onStartSimulation={handleStartSimulation}
-            onPauseSimulation={handlePauseSimulation}
-            onStopSimulation={handleStopSimulation}
-            aiBriefing={aiBriefing}
-            onNewSearch={handleNewSearch}
           />
-        </div>
-
-        {/* Floating Map Controls on Top-Right */}
-        <div className="absolute top-4 right-4 z-20 flex items-center gap-2">
-          {/* Toggle Flood Hazards */}
-          <button
-            type="button"
-            onClick={() => setShowHazards((prev) => !prev)}
-            className={`px-3 py-2 rounded-xl text-xs font-semibold shadow-md border transition-colors flex items-center gap-1.5 cursor-pointer ${
-              showHazards
-                ? 'bg-white text-gray-800 border-gray-200 hover:bg-gray-50'
-                : 'bg-gray-100 text-gray-500 border-gray-300'
-            }`}
-            title="Toggle visibility of flood hazard danger zones"
-          >
-            {showHazards ? <Eye className="w-3.5 h-3.5 text-emerald-700" /> : <EyeOff className="w-3.5 h-3.5" />}
-            <span className="hidden sm:inline">Flood Hazards</span>
-          </button>
-
-          {/* Toggle Dark/Street Theme */}
-          <button
-            type="button"
-            onClick={() => setMapTileTheme((t) => (t === 'streets' ? 'dark' : 'streets'))}
-            className="p-2 rounded-xl bg-white border border-gray-200 text-gray-700 hover:bg-gray-50 shadow-md text-xs font-medium cursor-pointer"
-            title="Toggle Map Basemap"
-          >
-            <Layers className="w-4 h-4" />
-          </button>
         </div>
       </div>
 
-      {/* Citizen Report Modal */}
+      {/* Simple Citizen Report Modal */}
       {isReportModalOpen && (
         <CitizenReportModal
           city={currentCity}
@@ -587,16 +447,6 @@ export default function App() {
           isOpen={isReportModalOpen}
           onClose={() => setIsReportModalOpen(false)}
           onSubmitReport={handleSubmitReport}
-        />
-      )}
-
-      {/* Hazards List Modal */}
-      {isHazardsListOpen && (
-        <HazardsListModal
-          cityName={cityMeta.name}
-          hazards={hazards.filter((h) => h.city === currentCity)}
-          isOpen={isHazardsListOpen}
-          onClose={() => setIsHazardsListOpen(false)}
         />
       )}
     </div>

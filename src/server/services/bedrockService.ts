@@ -1,8 +1,10 @@
+import { GoogleGenAI } from '@google/genai';
 import { BedrockRuntimeClient, InvokeModelCommand } from '@aws-sdk/client-bedrock-runtime';
 import { BedrockValidationResult, BedrockBriefingResult } from '../types/api';
 
 export class BedrockService {
   private client: BedrockRuntimeClient | null = null;
+  private geminiClient: GoogleGenAI | null = null;
   private modelId: string;
 
   constructor(
@@ -10,6 +12,15 @@ export class BedrockService {
     modelId = process.env.BEDROCK_MODEL_ID || 'anthropic.claude-3-haiku-20240307-v1:0'
   ) {
     this.modelId = modelId;
+
+    if (process.env.GEMINI_API_KEY) {
+      try {
+        this.geminiClient = new GoogleGenAI();
+      } catch {
+        this.geminiClient = null;
+      }
+    }
+
     const hasAwsCreds = Boolean(
       (process.env.AWS_ACCESS_KEY_ID && process.env.AWS_SECRET_ACCESS_KEY) ||
       process.env.AWS_LAMBDA_FUNCTION_NAME
@@ -25,19 +36,14 @@ export class BedrockService {
   }
 
   /**
-   * Validates flood image using Amazon Bedrock with robust fallback heuristics
+   * Validates flood image using Gemini AI, Amazon Bedrock, or robust fallback heuristics
    */
   async validateFloodImage(
     imageBase64?: string,
     reportedDepthCm: number = 35,
     userNotes: string = ''
   ): Promise<BedrockValidationResult> {
-    if (this.client && imageBase64 && imageBase64.includes('base64,')) {
-      try {
-        const mimeType = imageBase64.substring(5, imageBase64.indexOf(';'));
-        const base64Data = imageBase64.substring(imageBase64.indexOf('base64,') + 7);
-
-        const prompt = `Analyze this citizen-submitted photograph for road flooding and urban waterlogging hazards.
+    const prompt = `Analyze this citizen-submitted photograph for road flooding and urban waterlogging hazards.
 Strictly return a valid JSON object matching this schema:
 {
   "isFlooded": boolean,
@@ -49,6 +55,54 @@ Strictly return a valid JSON object matching this schema:
   "reasoning": string,
   "recommendedAction": string
 }`;
+
+    // 1. Try Gemini Vision if available
+    if (this.geminiClient && imageBase64 && imageBase64.includes('base64,')) {
+      try {
+        const mimeType = imageBase64.substring(5, imageBase64.indexOf(';')) || 'image/jpeg';
+        const base64Data = imageBase64.substring(imageBase64.indexOf('base64,') + 7);
+
+        const response = await this.geminiClient.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: [
+            {
+              inlineData: {
+                mimeType,
+                data: base64Data
+              }
+            },
+            {
+              text: prompt
+            }
+          ]
+        });
+
+        const textContent = response.text;
+        if (textContent) {
+          const cleanJson = textContent.replace(/```json/gi, '').replace(/```/g, '').trim();
+          const parsed = JSON.parse(cleanJson);
+          return {
+            isFlooded: Boolean(parsed.isFlooded),
+            confidence: Math.min(99, Math.max(70, Number(parsed.confidence) || 92)),
+            estimatedSeverity: parsed.estimatedSeverity || (reportedDepthCm >= 40 ? 'CRITICAL' : 'HIGH'),
+            estimatedWaterDepthCm: Number(parsed.estimatedWaterDepthCm) || reportedDepthCm,
+            estimatedDepthCategory: parsed.estimatedDepthCategory || 'KNEE_DEEP',
+            indicators: parsed.indicators || ['Standing water on asphalt', 'Road surface reflection'],
+            reasoning: parsed.reasoning || 'Visible water accumulation on road carriage lanes.',
+            recommendedAction: parsed.recommendedAction || 'Divert passenger vehicles to elevated corridor.',
+            analysisSource: 'GEMINI_AI'
+          };
+        }
+      } catch {
+        // Fall through to Bedrock or heuristic
+      }
+    }
+
+    // 2. Try AWS Bedrock if client available
+    if (this.client && imageBase64 && imageBase64.includes('base64,')) {
+      try {
+        const mimeType = imageBase64.substring(5, imageBase64.indexOf(';'));
+        const base64Data = imageBase64.substring(imageBase64.indexOf('base64,') + 7);
 
         const payload = {
           anthropic_version: 'bedrock-2023-05-31',
@@ -109,7 +163,7 @@ Strictly return a valid JSON object matching this schema:
   }
 
   /**
-   * Generates natural language driver safety briefing using Amazon Bedrock or deterministic templates
+   * Generates natural language driver safety briefing using Gemini AI, Amazon Bedrock, or deterministic templates
    */
   async generateSafetyBriefing(
     fastestHazards: Array<{ name: string; waterDepthCm: number; severity: string }>,
@@ -124,18 +178,38 @@ Strictly return a valid JSON object matching this schema:
       };
     }
 
-    if (this.client) {
-      try {
-        const hazardSummary = fastestHazards
-          .map((h) => `${h.name} (${h.waterDepthCm} cm water depth, ${h.severity} hazard)`)
-          .join(', ');
+    const hazardSummary = fastestHazards
+      .map((h) => `${h.name} (${h.waterDepthCm} cm water depth, ${h.severity} hazard)`)
+      .join(', ');
 
-        const prompt = `You are the navigation safety briefing engine for ClimatePulse AI ("Fastest isn't always safest").
+    const prompt = `You are the navigation safety briefing engine for ClimatePulse AI ("Fastest isn't always safest").
 The fastest route traverses these flood chokepoints: ${hazardSummary}.
 The vehicle is a ${vehicleName}.
 The safe alternative adds +${timeDelta} minutes and +${distanceDelta} km.
 Write a 2-sentence urgent, driver-friendly safety briefing explaining why taking the safe detour is strongly advised.`;
 
+    // 1. Try Gemini
+    if (this.geminiClient) {
+      try {
+        const response = await this.geminiClient.models.generateContent({
+          model: 'gemini-3.1-flash-lite',
+          contents: prompt
+        });
+
+        if (response.text) {
+          return {
+            briefing: response.text.trim(),
+            briefingSource: 'GEMINI_AI'
+          };
+        }
+      } catch {
+        // Fall through to Bedrock
+      }
+    }
+
+    // 2. Try Bedrock
+    if (this.client) {
+      try {
         const payload = {
           anthropic_version: 'bedrock-2023-05-31',
           max_tokens: 250,

@@ -9,6 +9,7 @@ import { handleGetReports, handleCreateReport } from './src/server/handlers/repo
 import { handleGenerateBriefing } from './src/server/handlers/briefingHandler.ts';
 import { getWeatherAdapter } from './src/server/adapters/weatherAdapter.ts';
 import { CityId } from './src/types/index.ts';
+import { INITIAL_HAZARDS } from './src/data/seedHazards.ts';
 
 dotenv.config();
 
@@ -90,6 +91,11 @@ async function startServer() {
 
   app.listen(PORT, '0.0.0.0', () => {
     console.log(`[ClimatePulse AI] Server active on http://0.0.0.0:${PORT}`);
+    const missingCityCount = INITIAL_HAZARDS.filter((h) => !h.city).length;
+    const missingStatusCount = INITIAL_HAZARDS.filter((h) => !h.status).length;
+    console.log(
+      `[STARTUP CHECK] Seeded hazards: ${INITIAL_HAZARDS.length} total. Missing city: ${missingCityCount}, Missing status: ${missingStatusCount}.`
+    );
   });
 }
 

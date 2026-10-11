@@ -10,6 +10,7 @@ export interface RouteCalculationParams {
   scenarioId?: string;
   hazards: HazardZone[];
   rainfallMmPerHour: number;
+  city?: string;
 }
 
 export class RoutingAdapter {
@@ -19,7 +20,7 @@ export class RoutingAdapter {
    * The existing deterministic routing/risk engine remains the sole authority.
    */
   async calculateRoutes(params: RouteCalculationParams): Promise<RouteComparisonResponse> {
-    const { origin, destination, vehicleId, scenarioId, hazards, rainfallMmPerHour } = params;
+    const { origin, destination, vehicleId, scenarioId, hazards, rainfallMmPerHour, city } = params;
 
     let vehicle: VehicleProfile =
       VEHICLE_PROFILES.find((v) => v.id === vehicleId) || VEHICLE_PROFILES[0];
@@ -38,7 +39,8 @@ export class RoutingAdapter {
       hazards,
       vehicle,
       rainfallMmPerHour,
-      scenarioId
+      scenarioId,
+      city
     );
   }
 }

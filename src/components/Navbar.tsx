@@ -1,84 +1,69 @@
 import React from 'react';
-import { ShieldCheck, Camera, RotateCcw } from 'lucide-react';
+import { ShieldCheck, MapPin } from 'lucide-react';
 import { CityId } from '../types';
-import { CITY_LIST } from '../data/cities';
+import { CITIES } from '../data/cities';
 
 interface NavbarProps {
   currentCity: CityId;
   onSelectCity: (city: CityId) => void;
   onOpenReportModal: () => void;
-  onResetData: () => void;
+  onResetData?: () => void;
 }
 
 export const Navbar: React.FC<NavbarProps> = ({
   currentCity,
   onSelectCity,
-  onOpenReportModal,
-  onResetData
+  onOpenReportModal
 }) => {
   return (
-    <header className="sticky top-0 z-30 w-full bg-white border-b border-gray-200">
-      <div className="w-full px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-        {/* Brand & Product Principle */}
-        <div className="flex items-center gap-3">
-          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-700 text-white shadow-xs">
+    <header className="w-full bg-white border-b border-gray-200 z-30 select-none">
+      <div className="w-full px-4 sm:px-6 h-14 flex items-center justify-between">
+        {/* Brand */}
+        <div className="flex items-center gap-2.5">
+          <div className="flex items-center justify-center w-8 h-8 rounded-lg bg-emerald-600 text-white shadow-xs">
             <ShieldCheck className="w-4 h-4" />
           </div>
-          <div className="flex items-baseline gap-2">
-            <span className="font-bold text-base tracking-tight text-gray-900">
+          <div className="flex flex-col">
+            <span className="font-semibold text-sm tracking-tight text-gray-900 leading-tight">
               ClimatePulse
             </span>
-            <span className="hidden md:inline-block text-xs text-gray-500 font-normal">
-              Flood-Aware Navigation
+            <span className="text-[11px] text-gray-500 font-normal leading-tight">
+              Flood-aware navigation
             </span>
           </div>
         </div>
 
-        {/* City Selector and Actions */}
-        <div className="flex items-center gap-2 sm:gap-3">
-          {/* City Selector Segmented Pills with canonical IDs */}
-          <div className="flex items-center bg-gray-100 rounded-lg p-0.5 border border-gray-200">
-            {CITY_LIST.map((city) => {
-              const isSelected = currentCity === city.id;
-              return (
-                <button
-                  key={city.id}
-                  type="button"
-                  data-city={city.id}
-                  onClick={() => {
-                    console.log(`[CITY NAVBAR] Clicked city: ${city.id} (${city.name})`);
-                    onSelectCity(city.id);
-                  }}
-                  className={`px-2.5 py-1 text-xs rounded-md transition-colors cursor-pointer ${
-                    isSelected
-                      ? 'bg-white text-emerald-800 font-semibold shadow-xs border border-gray-200/60'
-                      : 'text-gray-600 hover:text-gray-900'
-                  }`}
-                >
-                  {city.name}
-                </button>
-              );
-            })}
+        {/* Minimal Controls */}
+        <div className="flex items-center gap-2.5">
+          {/* Small Secondary City Selector */}
+          <div className="flex items-center gap-1 px-2.5 py-1.5 rounded-lg bg-gray-50 hover:bg-gray-100 border border-gray-200 text-xs transition-colors">
+            <MapPin className="w-3.5 h-3.5 text-gray-400 shrink-0" />
+            <select
+              id="city-selector"
+              value={currentCity}
+              onChange={(e) => {
+                const selected = e.target.value as CityId;
+                console.log(`[CITY SELECTOR] Selected stable city ID: "${selected}"`);
+                onSelectCity(selected);
+              }}
+              className="bg-transparent text-gray-700 font-medium text-xs focus:outline-none cursor-pointer pr-1"
+              aria-label="Select City"
+            >
+              {(Object.keys(CITIES) as CityId[]).map((cityId) => (
+                <option key={cityId} value={cityId}>
+                  {CITIES[cityId].name}
+                </option>
+              ))}
+            </select>
           </div>
 
-          {/* Report Flood Action Button */}
+          {/* Primary Navbar Action: Report Flood */}
           <button
             type="button"
             onClick={onOpenReportModal}
-            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-emerald-700 hover:bg-emerald-800 active:bg-emerald-900 text-white text-xs font-semibold shadow-xs transition-colors cursor-pointer"
+            className="px-3 py-1.5 rounded-lg bg-emerald-600 hover:bg-emerald-700 active:bg-emerald-800 text-white text-xs font-medium shadow-xs transition-colors cursor-pointer"
           >
-            <Camera className="w-3.5 h-3.5" />
-            <span>Report Flood</span>
-          </button>
-
-          {/* Reset Demo Data Button */}
-          <button
-            type="button"
-            onClick={onResetData}
-            title="Reset hazards to initial seed"
-            className="p-1.5 rounded-lg text-gray-400 hover:text-gray-700 hover:bg-gray-100 transition-colors cursor-pointer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
+            Report flood
           </button>
         </div>
       </div>

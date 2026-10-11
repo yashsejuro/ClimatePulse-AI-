@@ -74,6 +74,13 @@ const CITY_LANDMARKS: Record<CityId, PlaceResult[]> = {
   ]
 };
 
+export const CITY_VIEWBOXES: Record<CityId, { left: number; top: number; right: number; bottom: number }> = {
+  bengaluru: { left: 77.40, top: 13.15, right: 77.85, bottom: 12.65 },
+  chennai: { left: 80.05, top: 13.25, right: 80.35, bottom: 12.85 },
+  mumbai: { left: 72.70, top: 19.30, right: 73.05, bottom: 18.85 },
+  delhi: { left: 76.80, top: 28.90, right: 77.50, bottom: 28.30 }
+};
+
 /**
  * Parses coordinate string format e.g. "Pinned Location (12.9345, 77.6266)" or "12.9345, 77.6266"
  */
@@ -140,7 +147,7 @@ export async function resolveLocation(
 
   const q = trimmed.toLowerCase();
 
-  // 2. Exact match in active city landmarks
+  // 2. Exact match in active city landmarks only
   const cityLandmarks = CITY_LANDMARKS[city] || [];
   const activeExact = cityLandmarks.find(
     (l) => l.name.toLowerCase() === q || l.detail.toLowerCase() === q
@@ -150,74 +157,48 @@ export async function resolveLocation(
     return { name: activeExact.name, coords: activeExact.coords };
   }
 
-  // 3. Exact match across all Indian cities
-  for (const c of Object.keys(CITY_LANDMARKS) as CityId[]) {
-    const list = CITY_LANDMARKS[c];
-    const match = list.find((l) => l.name.toLowerCase() === q);
-    if (match) {
-      console.log(`[GEOCODE] Exact all-city match: ${match.name} [${match.coords}] for "${trimmed}"`);
-      return { name: match.name, coords: match.coords };
-    }
-  }
-
-  // 4. Substring match in active city landmarks
-  const activePartial = cityLandmarks.find(
-    (l) => l.name.toLowerCase().includes(q) || q.includes(l.name.toLowerCase())
-  );
-  if (activePartial) {
-    console.log(`[GEOCODE] Partial active city match: ${activePartial.name} [${activePartial.coords}] for "${trimmed}"`);
-    return { name: activePartial.name, coords: activePartial.coords };
-  }
-
-  // 5. Substring match across any city landmarks
-  for (const c of Object.keys(CITY_LANDMARKS) as CityId[]) {
-    const list = CITY_LANDMARKS[c];
-    const match = list.find(
+  // 3. Substring match in active city landmarks only (drop substring matching below 4 characters)
+  if (q.length >= 4) {
+    const activePartial = cityLandmarks.find(
       (l) => l.name.toLowerCase().includes(q) || q.includes(l.name.toLowerCase())
     );
-    if (match) {
-      console.log(`[GEOCODE] Partial all-city match: ${match.name} [${match.coords}] for "${trimmed}"`);
-      return { name: match.name, coords: match.coords };
+    if (activePartial) {
+      console.log(`[GEOCODE] Partial active city match: ${activePartial.name} [${activePartial.coords}] for "${trimmed}"`);
+      return { name: activePartial.name, coords: activePartial.coords };
     }
   }
 
-  // 6. Live OpenStreetMap Nominatim geocoder
+  // 4. Live OpenStreetMap Nominatim geocoder with countrycodes=in and bounded viewbox for selected city
   try {
     const cityConfig = CITIES[city] || CITIES.bengaluru;
-    // First try with city suffix for localized results
-    const queriesToTry = [
-      `${trimmed}, ${cityConfig.name}`,
-      trimmed
-    ];
+    const vb = CITY_VIEWBOXES[city] || CITY_VIEWBOXES.bengaluru;
+    const searchQuery = `${trimmed}, ${cityConfig.name}`;
+    const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
+      searchQuery
+    )}&countrycodes=in&viewbox=${vb.left},${vb.top},${vb.right},${vb.bottom}&bounded=1&limit=1`;
 
-    for (const searchQuery of queriesToTry) {
-      const searchUrl = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(
-        searchQuery
-      )}&limit=1`;
+    const res = await fetch(searchUrl, {
+      headers: {
+        'Accept': 'application/json',
+        'User-Agent': 'ClimatePulse-App/1.0'
+      },
+      signal: AbortSignal.timeout(3500)
+    });
 
-      const res = await fetch(searchUrl, {
-        headers: {
-          'Accept': 'application/json',
-          'User-Agent': 'ClimatePulse-App/1.0'
-        },
-        signal: AbortSignal.timeout(3500)
-      });
-
-      if (res.ok) {
-        const data = await res.json();
-        if (Array.isArray(data) && data.length > 0) {
-          const lat = parseFloat(data[0].lat);
-          const lon = parseFloat(data[0].lon);
-          if (!isNaN(lat) && !isNaN(lon)) {
-            const resolvedName = data[0].display_name
-              ? data[0].display_name.split(',')[0]
-              : trimmed;
-            console.log(`[GEOCODE] Nominatim found: ${resolvedName} [${lat}, ${lon}] for "${trimmed}"`);
-            return {
-              name: resolvedName,
-              coords: [lat, lon]
-            };
-          }
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lon = parseFloat(data[0].lon);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          const resolvedName = data[0].display_name
+            ? data[0].display_name.split(',')[0]
+            : trimmed;
+          console.log(`[GEOCODE] Nominatim found: ${resolvedName} [${lat}, ${lon}] for "${trimmed}"`);
+          return {
+            name: resolvedName,
+            coords: [lat, lon]
+          };
         }
       }
     }
@@ -227,5 +208,5 @@ export async function resolveLocation(
 
   // If geocoding fails completely: THROW AN ERROR, DO NOT SILENTLY DEFAULT
   console.error(`[GEOCODE] Failed to resolve: "${trimmed}"`);
-  throw new Error(`Could not find that location: "${trimmed}"`);
+  throw new Error(`Could not find location: ${trimmed}`);
 }

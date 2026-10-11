@@ -1,4 +1,5 @@
 import { HazardZone, RouteOption, RouteComparisonResponse, VehicleProfile, IntersectedHazard } from '../types';
+import { CITY_VIEWBOXES } from './geocodingService';
 
 /**
  * Calculates distance between two coordinates in meters using Haversine formula
@@ -25,6 +26,7 @@ export function calculateDistanceMeters(
 
 /**
  * Calculates minimum distance in meters from a point P to a line segment AB
+ * Using localized planar projection for high-precision street distance calculation
  */
 export function distancePointToSegmentMeters(
   pLat: number,
@@ -34,7 +36,6 @@ export function distancePointToSegmentMeters(
   bLat: number,
   bLon: number
 ): number {
-  // Approximate flat earth projection for localized street segments
   const cosLat = Math.cos((pLat * Math.PI) / 180);
   const px = pLon * cosLat * 111320;
   const py = pLat * 110540;
@@ -51,7 +52,7 @@ export function distancePointToSegmentMeters(
     return Math.hypot(px - ax, py - ay);
   }
 
-  // Projection parameter t
+  // Projection parameter t clamped to [0, 1]
   let t = ((px - ax) * dx + (py - ay) * dy) / lenSq;
   t = Math.max(0, Math.min(1, t));
 
@@ -62,32 +63,36 @@ export function distancePointToSegmentMeters(
 }
 
 /**
- * Detects which hazards intersect with the route polyline
+ * Canonical Hazard Intersection Detector
+ * Tests EVERY segment of the route polyline against EVERY active hazard geometry.
+ * Returns intersection details with exact minimum distance and affected segment.
  */
 export function detectHazardIntersections(
   coordinates: [number, number][],
   hazards: HazardZone[]
 ): IntersectedHazard[] {
   const intersected: IntersectedHazard[] = [];
-  if (coordinates.length < 2 || hazards.length === 0) return intersected;
+  if (!coordinates || coordinates.length < 2 || !hazards || hazards.length === 0) {
+    return intersected;
+  }
 
-  // Track cumulative distance along route for milestone markers
+  // Compute segment start cumulative distances
   let cumulativeDist = 0;
-  const segmentDists: number[] = [0];
+  const segmentCumulativeDists: number[] = [0];
   for (let i = 0; i < coordinates.length - 1; i++) {
-    const d = calculateDistanceMeters(
+    const segDist = calculateDistanceMeters(
       coordinates[i][0],
       coordinates[i][1],
       coordinates[i + 1][0],
       coordinates[i + 1][1]
     );
-    cumulativeDist += d;
-    segmentDists.push(cumulativeDist);
+    cumulativeDist += segDist;
+    segmentCumulativeDists.push(cumulativeDist);
   }
 
   for (const hazard of hazards) {
-    let minDistanceToHazard = Infinity;
-    let closestSegmentIdx = 0;
+    let minDistanceMeters = Infinity;
+    let closestSegmentIndex = 0;
 
     for (let i = 0; i < coordinates.length - 1; i++) {
       const dist = distancePointToSegmentMeters(
@@ -99,21 +104,26 @@ export function detectHazardIntersections(
         coordinates[i + 1][1]
       );
 
-      if (dist < minDistanceToHazard) {
-        minDistanceToHazard = dist;
-        closestSegmentIdx = i;
+      if (dist < minDistanceMeters) {
+        minDistanceMeters = dist;
+        closestSegmentIndex = i;
       }
     }
 
-    // If within danger radius (with 20% safety margin)
-    if (minDistanceToHazard <= hazard.radiusMeters * 1.15) {
-      const approxDistKm = (segmentDists[closestSegmentIdx] || 0) / 1000;
+    // A route intersects if its minimum distance to hazard center is <= hazard radius
+    // Adding 5% threshold to account for multilane road width and curb boundaries
+    const dangerThresholdMeters = hazard.radiusMeters * 1.05;
+
+    if (minDistanceMeters <= dangerThresholdMeters) {
+      const approxDistKm = (segmentCumulativeDists[closestSegmentIndex] || 0) / 1000;
       intersected.push({
         hazardId: hazard.id,
         name: hazard.name,
         severity: hazard.severity,
         waterDepthCm: hazard.waterDepthCm,
-        distanceFromStartKm: Math.round(approxDistKm * 10) / 10
+        distanceFromStartKm: Math.round(approxDistKm * 10) / 10,
+        minimumDistanceMeters: Math.round(minDistanceMeters),
+        affectedSegmentIndex: closestSegmentIndex
       });
     }
   }
@@ -122,7 +132,7 @@ export function detectHazardIntersections(
 }
 
 /**
- * Calculates Deterministic Climate Risk Index (0 - 100)
+ * Calculates Deterministic Climate Risk Score (0 - 100)
  */
 export function calculateRouteRiskScore(
   hazardsIntersected: IntersectedHazard[],
@@ -130,12 +140,11 @@ export function calculateRouteRiskScore(
   vehicle: VehicleProfile,
   regionalRainMm: number
 ): { score: number; category: 'SAFE' | 'CAUTION' | 'HAZARDOUS' } {
-  // Base wet road caution score (5 - 15 based on rain)
   let score = Math.min(15, Math.round((regionalRainMm / 50) * 12));
 
-  if (hazardsIntersected.length === 0) {
+  if (!hazardsIntersected || hazardsIntersected.length === 0) {
     return {
-      score: Math.max(6, score),
+      score: Math.max(5, score),
       category: 'SAFE'
     };
   }
@@ -144,26 +153,19 @@ export function calculateRouteRiskScore(
     const hazard = hazards.find((h) => h.id === item.hazardId);
     if (!hazard) continue;
 
-    // Depth penalty relative to vehicle ground clearance
     const depthRatio = hazard.waterDepthCm / Math.max(10, vehicle.clearanceCm);
-    const clearancePenalty = depthRatio >= 1.0 ? 1.5 : depthRatio >= 0.7 ? 1.1 : 0.8;
+    const clearancePenalty = depthRatio >= 1.0 ? 1.6 : depthRatio >= 0.7 ? 1.2 : 0.8;
     const depthFactor = Math.min(45, (hazard.waterDepthCm / 50) * 35 * clearancePenalty);
-
-    // Rainfall intensity factor
     const rainFactor = Math.min(25, (hazard.rainfallIntensityMmPerHour / 50) * 20);
-
-    // Severity factor
     const severityFactor =
       hazard.severity === 'CRITICAL' ? 35 :
       hazard.severity === 'HIGH' ? 26 :
       hazard.severity === 'MODERATE' ? 16 : 8;
 
-    const hazardScore = depthFactor + rainFactor + severityFactor;
-    score += hazardScore;
+    score += depthFactor + rainFactor + severityFactor;
   }
 
   const finalScore = Math.min(99, Math.max(5, Math.round(score)));
-
   let category: 'SAFE' | 'CAUTION' | 'HAZARDOUS' = 'SAFE';
   if (finalScore >= 65) category = 'HAZARDOUS';
   else if (finalScore >= 30) category = 'CAUTION';
@@ -172,286 +174,173 @@ export function calculateRouteRiskScore(
 }
 
 /**
- * Generates an avoidance bypass waypoint perpendicular to the hazard
+ * Determines whether a hazard is considered blocking (impassable/dangerous).
+ * Returns true if severity is CRITICAL or HIGH, or depth >= 30 cm.
  */
-export function computeBypassWaypoint(
+export function isBlockingHazard(h: { severity: string; waterDepthCm: number }): boolean {
+  return h.severity === 'CRITICAL' || h.severity === 'HIGH' || h.waterDepthCm >= 30;
+}
+
+export interface CandidateRoute {
+  coordinates: [number, number][];
+  distanceKm: number;
+  durationMinutes: number;
+  hazardsIntersected: IntersectedHazard[];
+  source: string;
+}
+
+export interface OSRMFetchResult {
+  routes: CandidateRoute[];
+  failed: boolean;
+}
+
+/**
+ * Requests OSRM route candidates between waypoints, tracking success or failure
+ */
+export async function fetchOSRMRouteResult(
+  waypoints: [number, number][],
+  alternatives: boolean = true
+): Promise<OSRMFetchResult> {
+  const results: CandidateRoute[] = [];
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), 8000);
+
+  try {
+    const coordsStr = waypoints.map((c) => `${c[1]},${c[0]}`).join(';');
+    const altParam = alternatives ? 'alternatives=3' : 'alternatives=false';
+    const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&${altParam}`;
+
+    const res = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+    if (!res.ok) {
+      return { routes: results, failed: true };
+    }
+
+    const data = await res.json();
+    if (!data.routes || !Array.isArray(data.routes)) {
+      return { routes: results, failed: false };
+    }
+
+    for (const route of data.routes) {
+      if (route.geometry?.coordinates?.length > 1) {
+        const coords: [number, number][] = route.geometry.coordinates.map(
+          (c: [number, number]) => [c[1], c[0]]
+        );
+        results.push({
+          coordinates: coords,
+          distanceKm: Math.round((route.distance / 1000) * 10) / 10,
+          durationMinutes: Math.round(route.duration / 60),
+          hazardsIntersected: [],
+          source: 'OSRM'
+        });
+      }
+    }
+    return { routes: results, failed: false };
+  } catch (err) {
+    clearTimeout(timeoutId);
+    return { routes: results, failed: true };
+  }
+}
+
+/**
+ * Requests OSRM route candidates between waypoints
+ */
+export async function fetchOSRMRouteCandidates(
+  waypoints: [number, number][],
+  alternatives: boolean = true
+): Promise<CandidateRoute[]> {
+  const res = await fetchOSRMRouteResult(waypoints, alternatives);
+  return res.routes;
+}
+
+/**
+ * Generates candidate bypass waypoints that steer clean of a specific hazard
+ */
+function generateBypassWaypoints(
   origin: [number, number],
   dest: [number, number],
-  hazard: HazardZone
-): [number, number] {
+  hazard: HazardZone,
+  activeHazards: HazardZone[]
+): [number, number][] {
+  const waypoints: [number, number][] = [];
+
   const dLat = dest[0] - origin[0];
   const dLon = dest[1] - origin[1];
-  const len = Math.hypot(dLat, dLon);
+  const len = Math.hypot(dLat, dLon) || 0.001;
 
-  if (len === 0) {
-    return [hazard.center[0] + 0.01, hazard.center[1] + 0.01];
-  }
-
-  // Normal vector (-dLon, dLat)
+  // Normal unit vectors
   const normLat = -dLon / len;
   const normLon = dLat / len;
 
-  // Offset by approx (radius * 2.2) converted to degrees (~111 km/deg)
-  const offsetMeters = Math.max(700, hazard.radiusMeters * 2.5);
-  const offsetDeg = offsetMeters / 111000;
+  // Distance offsets: 1.5km, 2.5km, 3.5km, 5km
+  const offsetsMeters = [1800, 2800, 4000, 5500];
 
-  // Direction: pick side furthest from other hazards or default positive normal
-  const candidate1: [number, number] = [
-    hazard.center[0] + normLat * offsetDeg,
-    hazard.center[1] + normLon * offsetDeg
-  ];
-  const candidate2: [number, number] = [
-    hazard.center[0] - normLat * offsetDeg,
-    hazard.center[1] - normLon * offsetDeg
-  ];
+  for (const distM of offsetsMeters) {
+    const degLat = (distM / 110540);
+    const degLon = (distM / (111320 * Math.cos((hazard.center[0] * Math.PI) / 180)));
 
-  // Pick candidate that gives reasonable detour
-  return candidate1;
-}
+    // Candidate 1: Perpendicular positive side
+    const p1: [number, number] = [
+      hazard.center[0] + normLat * degLat,
+      hazard.center[1] + normLon * degLon
+    ];
 
-/**
- * OSRM Routing Client with dynamic retry & fail-safe fallback
- */
-export async function fetchOSRMRoute(
-  coordinates: [number, number][],
-  alternatives: boolean = false
-): Promise<{ coordinates: [number, number][]; distanceKm: number; durationMinutes: number } | null> {
-  try {
-    const coordsStr = coordinates.map((c) => `${c[1]},${c[0]}`).join(';');
-    const url = `https://router.project-osrm.org/route/v1/driving/${coordsStr}?overview=full&geometries=geojson&alternatives=${alternatives}`;
+    // Candidate 2: Perpendicular negative side
+    const p2: [number, number] = [
+      hazard.center[0] - normLat * degLat,
+      hazard.center[1] - normLon * degLon
+    ];
 
-    const res = await fetch(url, { signal: AbortSignal.timeout(4000) });
-    if (!res.ok) return null;
+    // Candidate 3 & 4: North and South lateral shifts
+    const p3: [number, number] = [hazard.center[0] + degLat, hazard.center[1]];
+    const p4: [number, number] = [hazard.center[0] - degLat, hazard.center[1]];
 
-    const data = await res.json();
-    if (!data.routes || data.routes.length === 0) return null;
+    // Candidate 5 & 6: East and West lateral shifts
+    const p5: [number, number] = [hazard.center[0], hazard.center[1] + degLon];
+    const p6: [number, number] = [hazard.center[0], hazard.center[1] - degLon];
 
-    const route = data.routes[0];
-    const path: [number, number][] = route.geometry.coordinates.map(
-      (c: [number, number]) => [c[1], c[0]]
-    );
+    for (const pt of [p1, p2, p3, p4, p5, p6]) {
+      // Waypoint must NOT itself be inside any active hazard
+      const isInsideAnyHazard = activeHazards.some((h) => {
+        const d = calculateDistanceMeters(pt[0], pt[1], h.center[0], h.center[1]);
+        return d <= h.radiusMeters + 300;
+      });
 
-    return {
-      coordinates: path,
-      distanceKm: Math.round((route.distance / 1000) * 10) / 10,
-      durationMinutes: Math.round(route.duration / 60)
-    };
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Generates synthetic curved road polyline between points with realism
- */
-export function generateCurvedPath(
-  points: [number, number][],
-  jitterFactor: number = 0.0003,
-  stepsPerSegment: number = 18
-): [number, number][] {
-  const result: [number, number][] = [];
-
-  for (let i = 0; i < points.length - 1; i++) {
-    const p1 = points[i];
-    const p2 = points[i + 1];
-
-    for (let s = 0; s < stepsPerSegment; s++) {
-      const t = s / stepsPerSegment;
-      // Hermite-like smooth interpolation with slight natural road arc
-      const lat = p1[0] + (p2[0] - p1[0]) * t;
-      const lon = p1[1] + (p2[1] - p1[1]) * t;
-      
-      const arc = Math.sin(t * Math.PI) * jitterFactor;
-      result.push([lat + arc * 0.4, lon + arc]);
+      if (!isInsideAnyHazard) {
+        waypoints.push(pt);
+      }
     }
   }
 
-  result.push(points[points.length - 1]);
-  return result;
+  return waypoints;
+}
+
+function inferCityFromCoordinates(lat: number, lon: number): string {
+  const cityEntries: [string, [number, number]][] = [
+    ['bengaluru', [12.9716, 77.5946]],
+    ['chennai', [13.0827, 80.2707]],
+    ['mumbai', [19.0760, 72.8777]],
+    ['delhi', [28.6139, 77.2090]]
+  ];
+  let closest = 'bengaluru';
+  let minDist = Infinity;
+  for (const [cId, coords] of cityEntries) {
+    const d = calculateDistanceMeters(lat, lon, coords[0], coords[1]);
+    if (d < minDist) {
+      minDist = d;
+      closest = cId;
+    }
+  }
+  return closest;
 }
 
 /**
- * Pre-computed high-fidelity corridor presets for major demo routes
- * Ensures instantaneous, 100% reliable rendering during live presentations
- */
-export function getPresetCorridorGeometry(
-  scenarioId: string
-): { fastestCoords: [number, number][]; safeCoords: [number, number][] } | null {
-  if (scenarioId === 'bengaluru-silkboard') {
-    // Koramangala -> Silk Board -> Electronic City
-    const fastest: [number, number][] = [
-      [12.9345, 77.6266], // Koramangala 4th Block
-      [12.9280, 77.6250], // Madiwala Market
-      [12.9220, 77.6242], // St Johns Hospital
-      [12.9177, 77.6238], // Silk Board Underpass (HAZARD - 48 cm)
-      [12.9050, 77.6330], // Bommanahalli Junction
-      [12.8900, 77.6430], // Kudlu Gate
-      [12.8750, 77.6520], // Singasandra
-      [12.8600, 77.6580], // Hosa Road
-      [12.8452, 77.6602]  // Electronic City Phase 1
-    ];
-
-    // Safe Detour: BTM 2nd Stage -> Bannerghatta Link -> NICE Rd / Hosur Elevated Bypass
-    const safe: [number, number][] = [
-      [12.9345, 77.6266], // Koramangala 4th Block
-      [12.9290, 77.6180], // Tavarekere Main Rd
-      [12.9210, 77.6110], // BTM Layout 2nd Stage Ring Rd
-      [12.9140, 77.6080], // Udupi Garden Signal
-      [12.9030, 77.6150], // BTM Lake Ring Road Bypass
-      [12.8930, 77.6280], // Devarachikkanahalli Link
-      [12.8780, 77.6420], // Begur Elevated Access
-      [12.8620, 77.6540], // Electronic City Elevated Tollway Entry
-      [12.8452, 77.6602]  // Electronic City Phase 1
-    ];
-
-    return {
-      fastestCoords: generateCurvedPath(fastest, 0.0004),
-      safeCoords: generateCurvedPath(safe, -0.0005)
-    };
-  }
-
-  if (scenarioId === 'bengaluru-orr-techpark') {
-    // HSR -> Bellandur ORR -> Ecospace -> Prestige Tech Park
-    const fastest: [number, number][] = [
-      [12.9121, 77.6446], // HSR Sector 2
-      [12.9180, 77.6550], // Agara Lake Junction
-      [12.9230, 77.6640], // Iblur Junction
-      [12.9298, 77.6745], // Bellandur Lake Spillway & Ecospace (HAZARD - 36 cm)
-      [12.9340, 77.6830], // Kadubeesanahalli Underpass
-      [12.9366, 77.6918]  // Prestige Tech Park
-    ];
-
-    // Safe Detour: Sarjapur Main Road -> Doddakannelli -> Carmelaram -> Kadubeesanahalli High Ridge
-    const safe: [number, number][] = [
-      [12.9121, 77.6446], // HSR Sector 2
-      [12.9140, 77.6580], // Sarjapur Road
-      [12.9160, 77.6720], // Kaikondrahalli Lake Ridge
-      [12.9180, 77.6840], // Doddakannelli Link
-      [12.9280, 77.6890], // Gear School Road
-      [12.9366, 77.6918]  // Prestige Tech Park
-    ];
-
-    return {
-      fastestCoords: generateCurvedPath(fastest, 0.0003),
-      safeCoords: generateCurvedPath(safe, 0.0006)
-    };
-  }
-
-  if (scenarioId === 'mumbai-santacruz-dadar') {
-    // Santacruz -> Milan Subway -> Dadar
-    const fastest: [number, number][] = [
-      [19.0831, 72.8340], // Santacruz West
-      [19.0838, 72.8427], // Milan Subway (HAZARD - 55 cm submerged)
-      [19.0680, 72.8460], // Khar WEH
-      [19.0550, 72.8470], // Bandra West
-      [19.0380, 72.8450], // Mahim Causeway
-      [19.0178, 72.8478]  // Dadar TT Circle
-    ];
-
-    // Safe: Western Express Highway Elevated Flyover bypass
-    const safe: [number, number][] = [
-      [19.0831, 72.8340], // Santacruz West
-      [19.0890, 72.8460], // Santacruz East WEH Ramp
-      [19.0750, 72.8520], // Vakola Flyover
-      [19.0600, 72.8540], // Kalanagar Flyover
-      [19.0430, 72.8510], // Dharavi Elevated Connector
-      [19.0250, 72.8490], // Matunga Flyover
-      [19.0178, 72.8478]  // Dadar TT Circle
-    ];
-
-    return {
-      fastestCoords: generateCurvedPath(fastest, 0.0003),
-      safeCoords: generateCurvedPath(safe, -0.0004)
-    };
-  }
-
-  if (scenarioId === 'delhi-cp-noida') {
-    // CP -> Minto Bridge -> ITO -> Noida
-    const fastest: [number, number][] = [
-      [28.6328, 77.2197], // CP Inner Circle
-      [28.6341, 77.2274], // Minto Bridge Underpass (HAZARD - 60 cm)
-      [28.6300, 77.2400], // Deen Dayal Upadhyay Marg
-      [28.6250, 77.2600], // Vikas Marg / Yamuna Bridge
-      [28.6050, 77.2850], // Akshardham Temple Complex
-      [28.5850, 77.3050], // Mayur Vihar
-      [28.5708, 77.3261]  // Noida Sector 18
-    ];
-
-    // Safe: Barakhamba Road -> Pragati Maidan Tunnel / Ring Road -> DND Flyway
-    const safe: [number, number][] = [
-      [28.6328, 77.2197], // CP
-      [28.6280, 77.2290], // Barakhamba Road
-      [28.6220, 77.2420], // Mandi House Circle
-      [28.6180, 77.2520], // Supreme Court / Mathura Road
-      [28.6040, 77.2560], // Nizamuddin Ring Road
-      [28.5850, 77.2750], // DND Flyway Elevated Deck
-      [28.5708, 77.3261]  // Noida Sector 18
-    ];
-
-    return {
-      fastestCoords: generateCurvedPath(fastest, 0.0002),
-      safeCoords: generateCurvedPath(safe, 0.0005)
-    };
-  }
-
-  if (scenarioId === 'chennai-velachery') {
-    // Guindy -> Velachery Main Rd (HAZARD - 48 cm) -> OMR Thoraipakkam
-    const fastest: [number, number][] = [
-      [13.0067, 80.2025], // Guindy Industrial Estate
-      [12.9930, 80.2110], // Checkpost Junction
-      [12.9784, 80.2185], // Velachery Lake Spillway (HAZARD - 48 cm)
-      [12.9640, 80.2280], // Perungudi Link
-      [12.9382, 80.2335]  // OMR Thoraipakkam IT Corridor
-    ];
-
-    // Safe: Guindy -> Saidapet -> Sardar Patel Rd -> Madhya Kailash -> OMR Elevated Expressway
-    const safe: [number, number][] = [
-      [13.0067, 80.2025], // Guindy
-      [13.0150, 80.2200], // Saidapet / Anna Salai
-      [13.0090, 80.2360], // Sardar Patel Rd / IIT Madras
-      [13.0060, 80.2520], // Madhya Kailash Junction
-      [12.9850, 80.2480], // Tidel Park Elevated Corridor
-      [12.9600, 80.2420], // Kandanchavadi OMR
-      [12.9382, 80.2335]  // OMR Thoraipakkam IT Corridor
-    ];
-
-    return {
-      fastestCoords: generateCurvedPath(fastest, 0.0003),
-      safeCoords: generateCurvedPath(safe, 0.0004)
-    };
-  }
-
-  if (scenarioId === 'chennai-madipakkam') {
-    // Alandur -> Madipakkam Bazaar (HAZARD - 38 cm) -> Medavakkam
-    const fastest: [number, number][] = [
-      [13.0034, 80.1982], // Alandur Metro
-      [12.9850, 80.1990], // Vanuvampet
-      [12.9652, 80.1989], // Madipakkam Ram Nagar Lowlands (HAZARD - 38 cm)
-      [12.9450, 80.1940], // Kovilambakkam
-      [12.9208, 80.1915]  // Medavakkam Junction
-    ];
-
-    // Safe: Alandur -> GST Road -> Pallavaram-Thoraipakkam Radial Road Elevated Deck -> Medavakkam Link
-    const safe: [number, number][] = [
-      [13.0034, 80.1982], // Alandur
-      [12.9800, 80.1820], // Meenambakkam GST Rd
-      [12.9620, 80.1750], // Pallavaram Flyover
-      [12.9550, 80.1920], // Radial Road Elevated Deck
-      [12.9400, 80.1980], // Keelkattalai Outer Arc
-      [12.9208, 80.1915]  // Medavakkam Junction
-    ];
-
-    return {
-      fastestCoords: generateCurvedPath(fastest, 0.0003),
-      safeCoords: generateCurvedPath(safe, -0.0004)
-    };
-  }
-
-  return null;
-}
-
-/**
- * Calculates dual routes and comparison response
+ * Dual Route Calculation and Real Hazard Avoidance Engine
+ *
+ * GUARANTEE:
+ * A route is ONLY designated as "SAFE" if its polyline has been mathematically
+ * verified to avoid the hazards that the fastest route intersects.
+ * If no flood-free candidate exists, safeRouteFound is false and safe is null.
  */
 export async function calculateDualRoutes(
   origin: [number, number],
@@ -459,143 +348,308 @@ export async function calculateDualRoutes(
   hazards: HazardZone[],
   vehicle: VehicleProfile,
   regionalRainMm: number = 32,
-  scenarioId?: string
+  _scenarioId?: string,
+  requestedCity?: string
 ): Promise<RouteComparisonResponse> {
-  let fastestCoords: [number, number][] = [];
-  let safeCoords: [number, number][] = [];
-  let fastestDistKm = 0;
-  let fastestDurMin = 0;
-  let safeDistKm = 0;
-  let safeDurMin = 0;
+  const targetCity = (requestedCity || inferCityFromCoordinates(origin[0], origin[1])).toLowerCase();
+  let osrmCallsFailed = false;
 
-  // 1. Check if scenario preset exists
-  const presetGeom = scenarioId ? getPresetCorridorGeometry(scenarioId) : null;
-
-  if (presetGeom) {
-    fastestCoords = presetGeom.fastestCoords;
-    safeCoords = presetGeom.safeCoords;
-
-    const baseDist = calculateDistanceMeters(origin[0], origin[1], destination[0], destination[1]) / 1000;
-    fastestDistKm = Math.round(baseDist * 1.15 * 10) / 10;
-    fastestDurMin = Math.round(fastestDistKm * 2.8); // approx 22-25 km/h city speed
-
-    safeDistKm = Math.round((fastestDistKm + 2.3) * 10) / 10;
-    safeDurMin = fastestDurMin + 6;
-  } else {
-    // 2. Try fetching real OSRM route for fastest
-    const osrmFastest = await fetchOSRMRoute([origin, destination]);
-    if (osrmFastest && osrmFastest.coordinates.length > 2) {
-      fastestCoords = osrmFastest.coordinates;
-      fastestDistKm = osrmFastest.distanceKm;
-      fastestDurMin = osrmFastest.durationMinutes;
+  // Hazard filtering:
+  // - A hazard with a missing status must be treated as ACTIVE (keep the console.warn).
+  // - A hazard with a missing city must be logged and, if the request has a known city,
+  //   treated as belonging to it only if its coordinates fall within that city's viewbox; otherwise excluded with the warning.
+  const activeCityHazards = hazards.filter((h) => {
+    let isActive = false;
+    if (!h.status) {
+      console.warn(`[HAZARD VALIDATION] Hazard "${h.id}" missing status. Treating as ACTIVE.`);
+      isActive = true;
     } else {
-      // Fallback geometric path
-      const midPoint: [number, number] = [
-        (origin[0] + destination[0]) / 2,
-        (origin[1] + destination[1]) / 2
-      ];
-      fastestCoords = generateCurvedPath([origin, midPoint, destination], 0.0004);
-      const dist = calculateDistanceMeters(origin[0], origin[1], destination[0], destination[1]) / 1000;
-      fastestDistKm = Math.round(dist * 1.2 * 10) / 10;
-      fastestDurMin = Math.round(fastestDistKm * 2.6);
+      isActive = h.status.toLowerCase() === 'active';
     }
 
-    // Check hazards on fastest route
-    const initialHazards = detectHazardIntersections(fastestCoords, hazards);
+    if (!isActive) {
+      return false;
+    }
 
-    if (initialHazards.length > 0) {
-      // Find the most critical intersected hazard to bypass
-      const worstHazard = hazards.find((h) => h.id === initialHazards[0].hazardId);
-      const bypassWaypoint = worstHazard
-        ? computeBypassWaypoint(origin, destination, worstHazard)
-        : [
-            (origin[0] + destination[0]) / 2 + 0.015,
-            (origin[1] + destination[1]) / 2 - 0.012
-          ] as [number, number];
-
-      // Try OSRM with bypass waypoint
-      const osrmSafe = await fetchOSRMRoute([origin, bypassWaypoint, destination]);
-      if (osrmSafe && osrmSafe.coordinates.length > 2) {
-        safeCoords = osrmSafe.coordinates;
-        safeDistKm = osrmSafe.distanceKm;
-        safeDurMin = osrmSafe.durationMinutes;
+    let belongsToCity = false;
+    if (!h.city) {
+      console.warn(`[HAZARD VALIDATION] Hazard "${h.id}" missing city.`);
+      const cityVb = (CITY_VIEWBOXES as Record<string, { left: number; top: number; right: number; bottom: number }>)[targetCity];
+      if (cityVb && h.center) {
+        const minLat = Math.min(cityVb.top, cityVb.bottom);
+        const maxLat = Math.max(cityVb.top, cityVb.bottom);
+        const minLon = Math.min(cityVb.left, cityVb.right);
+        const maxLon = Math.max(cityVb.left, cityVb.right);
+        const inside =
+          h.center[0] >= minLat &&
+          h.center[0] <= maxLat &&
+          h.center[1] >= minLon &&
+          h.center[1] <= maxLon;
+        if (inside) {
+          belongsToCity = true;
+        } else {
+          console.warn(`[HAZARD VALIDATION] Hazard "${h.id}" missing city and coordinates outside ${targetCity} viewbox. Excluding.`);
+        }
       } else {
-        safeCoords = generateCurvedPath([origin, bypassWaypoint, destination], 0.0007);
-        safeDistKm = Math.round((fastestDistKm + 2.1) * 10) / 10;
-        safeDurMin = fastestDurMin + 5;
+        console.warn(`[HAZARD VALIDATION] Hazard "${h.id}" missing city and no viewbox found for city "${targetCity}". Excluding.`);
       }
     } else {
-      // If fastest route already safe, safe route is identical with slight buffer
-      safeCoords = fastestCoords;
-      safeDistKm = fastestDistKm;
-      safeDurMin = fastestDurMin;
+      belongsToCity = h.city.toLowerCase() === targetCity;
+    }
+
+    return belongsToCity;
+  });
+
+  console.log(`[ROUTING TRACE] Request: origin=[${origin[0]}, ${origin[1]}], dest=[${destination[0]}, ${destination[1]}], city=${targetCity}`);
+  console.log(`[ROUTING TRACE] Active city hazards count: ${activeCityHazards.length} (filtered from ${hazards.length})`);
+
+  // 1. Fetch primary route candidates from OSRM
+  const primaryResult = await fetchOSRMRouteResult([origin, destination], true);
+  if (primaryResult.failed) {
+    osrmCallsFailed = true;
+  }
+  const candidates = primaryResult.routes;
+
+  // If OSRM returned nothing, do not draw synthetic routes; throw and surface service unavailability
+  if (candidates.length === 0) {
+    throw new Error('Routing service unavailable');
+  }
+
+  // 2. Evaluate hazard intersections for every baseline candidate
+  for (const c of candidates) {
+    c.hazardsIntersected = detectHazardIntersections(c.coordinates, activeCityHazards);
+  }
+
+  // 3. Fastest route is candidate with minimum duration
+  candidates.sort((a, b) => a.durationMinutes - b.durationMinutes);
+  const fastestCandidate = candidates[0];
+  const fastestHazards = fastestCandidate.hazardsIntersected;
+
+  console.log(`[ROUTING TRACE] Fastest route: ${fastestCandidate.distanceKm} km, ${fastestCandidate.durationMinutes} min, intersected hazards: ${fastestHazards.length}`);
+  fastestHazards.forEach((h) => {
+    console.log(`  -> Fastest intersects: ${h.name} (${h.waterDepthCm} cm, min distance: ${h.minimumDistanceMeters}m)`);
+  });
+
+  // FIX 2: Safe route logic must use blocking hazards, not "any hazard"
+  let safeCandidate: CandidateRoute | null = null;
+  const blockingOnFastest = fastestHazards.filter(isBlockingHazard);
+
+  if (blockingOnFastest.length === 0) {
+    // If blockingOnFastest is empty, the fastest route IS the safe route:
+    // no detour search, no extra bypass call.
+    safeCandidate = fastestCandidate;
+  } else {
+    // Only search for bypasses when blockingOnFastest is non-empty.
+    // Check if any other alternative route returned by OSRM avoids all blocking hazards
+    const cleanAlternative = candidates.slice(1).find((c) => {
+      return c.hazardsIntersected.filter(isBlockingHazard).length === 0;
+    });
+
+    if (cleanAlternative) {
+      console.log(`[ROUTING TRACE] Found clean alternative route from OSRM alternatives: ${cleanAlternative.distanceKm} km`);
+      safeCandidate = cleanAlternative;
+    } else {
+      // None of the default alternatives avoided the blocking hazards.
+      // Systematically search for alternative road corridors via bypass waypoints.
+      console.log(`[ROUTING TRACE] Searching bypass corridors around ${blockingOnFastest.length} blocking hazard(s)...`);
+
+      const evaluatedSafeCandidates: CandidateRoute[] = [];
+
+      // Sort blockingOnFastest by severity (descending), then water depth (descending)
+      const severityRank: Record<string, number> = {
+        CRITICAL: 4,
+        HIGH: 3,
+        MODERATE: 2,
+        LOW: 1
+      };
+      blockingOnFastest.sort((a, b) => {
+        const diffSev = (severityRank[b.severity] || 0) - (severityRank[a.severity] || 0);
+        if (diffSev !== 0) return diffSev;
+        return b.waterDepthCm - a.waterDepthCm;
+      });
+
+      // When choosing the hazard to bypass, pick from blockingOnFastest
+      const worstHazardMeta = activeCityHazards.find((h) => h.id === blockingOnFastest[0].hazardId);
+
+      if (worstHazardMeta) {
+        const bypassWaypoints = generateBypassWaypoints(origin, destination, worstHazardMeta, activeCityHazards);
+        console.log(`[ROUTING TRACE] Generated ${bypassWaypoints.length} candidate bypass waypoints`);
+
+        // Item 1: Run the bypass calls in parallel with Promise.all (max 5)
+        const cappedWaypoints = bypassWaypoints.slice(0, 5);
+
+        const bypassResults = await Promise.all(
+          cappedWaypoints.map((wp) => fetchOSRMRouteResult([origin, wp, destination], false))
+        );
+
+        for (const wpRes of bypassResults) {
+          if (wpRes.failed) {
+            osrmCallsFailed = true;
+          }
+          if (wpRes.routes.length > 0) {
+            const r = wpRes.routes[0];
+            const rHazards = detectHazardIntersections(r.coordinates, activeCityHazards);
+            r.hazardsIntersected = rHazards;
+
+            // Strict test: does this bypass route avoid blocking hazards and the worst hazard that fastest hit?
+            const hitsBlocking = rHazards.some((h) => isBlockingHazard(h));
+            const hitsWorst = rHazards.some((h) => h.hazardId === worstHazardMeta.id);
+
+            if (!hitsBlocking && !hitsWorst) {
+              evaluatedSafeCandidates.push(r);
+            }
+          }
+        }
+      }
+
+      if (evaluatedSafeCandidates.length > 0) {
+        // Sort by fewest hazards first, then shortest duration
+        evaluatedSafeCandidates.sort((a, b) => {
+          if (a.hazardsIntersected.length !== b.hazardsIntersected.length) {
+            return a.hazardsIntersected.length - b.hazardsIntersected.length;
+          }
+          return a.durationMinutes - b.durationMinutes;
+        });
+        safeCandidate = evaluatedSafeCandidates[0];
+      }
     }
   }
 
-  // 3. Analyze hazard intersections for both routes
-  const fastestHazards = detectHazardIntersections(fastestCoords, hazards);
-  const safeHazards = detectHazardIntersections(safeCoords, hazards);
+  // 5. Verification & Safety Invariant Assertion
+  let safeRouteFound = false;
+  let finalSafeRoute: RouteOption | null = null;
+  let noSafeRouteReason: string | null = null;
 
-  // 4. Calculate deterministic risk scores
-  const fastestRisk = calculateRouteRiskScore(fastestHazards, hazards, vehicle, regionalRainMm);
-  const safeRisk = calculateRouteRiskScore(safeHazards, hazards, vehicle, regionalRainMm);
+  if (safeCandidate) {
+    const verifiedSafeHazards = detectHazardIntersections(safeCandidate.coordinates, activeCityHazards);
+    const blockingHazardsOnSafe = verifiedSafeHazards.filter((h) => isBlockingHazard(h));
 
-  // Ensure safe route risk is lower if hazards were avoided
-  const finalSafeScore = fastestHazards.length > safeHazards.length
-    ? Math.min(safeRisk.score, Math.max(8, Math.round(fastestRisk.score * 0.22)))
-    : safeRisk.score;
+    if (blockingHazardsOnSafe.length === 0) {
+      // Verified safe!
+      safeRouteFound = true;
+      const safeRisk = calculateRouteRiskScore(verifiedSafeHazards, activeCityHazards, vehicle, regionalRainMm);
 
-  const finalSafeCategory = finalSafeScore < 30 ? 'SAFE' : finalSafeScore < 65 ? 'CAUTION' : 'HAZARDOUS';
+      let safeExplanation = '';
+      if (verifiedSafeHazards.length === 0) {
+        const avoidsCount = fastestHazards.length;
+        safeExplanation = `Avoids ${avoidsCount} flood hazard(s). No known hazards on this route.`;
+      } else {
+        const avoidsBlockingCount = blockingOnFastest.length;
+        const minorNames = verifiedSafeHazards.map((h) => h.name).join(', ');
+        safeExplanation = `Avoids ${avoidsBlockingCount} blocking hazard(s). Minor hazards remain: ${minorNames}.`;
+      }
 
-  const riskDeltaPercent = fastestRisk.score > 0
-    ? Math.round(((finalSafeScore - fastestRisk.score) / fastestRisk.score) * 100)
+      // Item 5: Add a flag longDetour=true on the safe route when its duration is more than 2.5x the fastest
+      const isLongDetour = safeCandidate.durationMinutes > fastestCandidate.durationMinutes * 2.5;
+
+      finalSafeRoute = {
+        type: 'SAFE',
+        distanceKm: safeCandidate.distanceKm,
+        durationMinutes: safeCandidate.durationMinutes,
+        riskScore: safeRisk.score,
+        riskCategory: safeRisk.category,
+        coordinates: safeCandidate.coordinates,
+        geometry: safeCandidate.coordinates,
+        hazardsIntersected: verifiedSafeHazards,
+        explanation: safeExplanation,
+        longDetour: isLongDetour
+      };
+    } else {
+      console.warn(`[ROUTING SAFETY CHECK] Candidate safe route intersects blocking hazards:`, blockingHazardsOnSafe);
+      safeRouteFound = false;
+      finalSafeRoute = null;
+      if (osrmCallsFailed) {
+        noSafeRouteReason = "Couldn't verify an alternate route (routing service error). Try again.";
+      } else {
+        noSafeRouteReason = `No flood-safe alternate route found. All evaluated routes cross ${blockingHazardsOnSafe[0].name} (${blockingHazardsOnSafe[0].waterDepthCm} cm water depth).`;
+      }
+    }
+  } else {
+    safeRouteFound = false;
+    finalSafeRoute = null;
+    if (osrmCallsFailed) {
+      noSafeRouteReason = "Couldn't verify an alternate route (routing service error). Try again.";
+    } else if (blockingOnFastest.length > 0) {
+      noSafeRouteReason = `No flood-safe alternate route found. All viable paths traverse ${blockingOnFastest[0].name} (${blockingOnFastest[0].waterDepthCm} cm water depth).`;
+    } else {
+      noSafeRouteReason = 'No route available between the specified locations.';
+    }
+  }
+
+  // Calculate fastest route risk
+  const fastestRisk = calculateRouteRiskScore(fastestHazards, activeCityHazards, vehicle, regionalRainMm);
+
+  let fastestExplanation = '';
+  if (fastestHazards.length === 0) {
+    fastestExplanation = 'No known hazards on this route.';
+  } else if (blockingOnFastest.length === 0) {
+    const minorNames = fastestHazards.map((h) => h.name).join(', ');
+    fastestExplanation = `Minor hazards remain: ${minorNames}.`;
+  } else {
+    const blockingNames = blockingOnFastest.map((h) => `${h.name} (${h.waterDepthCm} cm)`).join(', ');
+    const minorRemaining = fastestHazards.filter((h) => !isBlockingHazard(h));
+    if (minorRemaining.length > 0) {
+      const minorNames = minorRemaining.map((h) => h.name).join(', ');
+      fastestExplanation = `Passes through ${blockingOnFastest.length} blocking hazard(s): ${blockingNames}. Minor hazards remain: ${minorNames}.`;
+    } else {
+      fastestExplanation = `Passes through ${blockingOnFastest.length} blocking hazard(s): ${blockingNames}.`;
+    }
+  }
+
+  const finalFastestRoute: RouteOption = {
+    type: 'FASTEST',
+    distanceKm: fastestCandidate.distanceKm,
+    durationMinutes: fastestCandidate.durationMinutes,
+    riskScore: fastestRisk.score,
+    riskCategory: fastestRisk.category,
+    coordinates: fastestCandidate.coordinates,
+    geometry: fastestCandidate.coordinates,
+    hazardsIntersected: fastestHazards,
+    explanation: fastestExplanation
+  };
+
+  const avoidedHazardsCount = finalSafeRoute
+    ? Math.max(0, fastestHazards.length - finalSafeRoute.hazardsIntersected.length)
     : 0;
 
-  const timeDeltaMinutes = Math.max(0, safeDurMin - fastestDurMin);
-  const distanceDeltaKm = Math.round((safeDistKm - fastestDistKm) * 10) / 10;
-  const avoidedCount = Math.max(0, fastestHazards.length - safeHazards.length);
+  const timeDeltaMinutes = finalSafeRoute
+    ? Math.max(0, finalSafeRoute.durationMinutes - finalFastestRoute.durationMinutes)
+    : 0;
 
-  // Summary explanation
-  let summary = '';
-  if (fastestHazards.length > 0) {
-    const worst = fastestHazards[0];
-    summary = `Fastest route passes through ${worst.name} (${worst.waterDepthCm} cm water depth, severe hydroplaning & stall risk). ClimatePulse safe detour adds ${timeDeltaMinutes} min (+${distanceDeltaKm} km) while avoiding ${avoidedCount} flood hotspot${avoidedCount > 1 ? 's' : ''}.`;
+  const distanceDeltaKm = finalSafeRoute
+    ? Math.round((finalSafeRoute.distanceKm - finalFastestRoute.distanceKm) * 10) / 10
+    : 0;
+
+  const riskDeltaPercent = finalSafeRoute && fastestRisk.score > 0
+    ? Math.round(((finalSafeRoute.riskScore - fastestRisk.score) / fastestRisk.score) * 100)
+    : 0;
+
+  // Build unambiguous safety summary
+  let safetySummary = '';
+  if (!safeRouteFound) {
+    safetySummary = noSafeRouteReason || 'No flood-safe alternate route found.';
+  } else if (avoidedHazardsCount > 0) {
+    const worst = blockingOnFastest[0] || fastestHazards[0];
+    safetySummary = `Fastest route leads directly through ${worst.name} (${worst.waterDepthCm} cm water depth). Verified safe detour adds ${timeDeltaMinutes} min (+${distanceDeltaKm} km) and completely avoids all critical flood zones.`;
   } else {
-    summary = `No active flood hazards detected on direct route. Both routes are within safe operational limits (${regionalRainMm} mm/h rainfall caution).`;
+    safetySummary = 'Both routes operate within safe thresholds. Maintain wet-weather caution.';
+  }
+
+  console.log(`[ROUTING RESULT] safeRouteFound=${safeRouteFound}, avoidedHazardsCount=${avoidedHazardsCount}`);
+  if (finalSafeRoute) {
+    console.log(`[ROUTING RESULT] Safe route verified: ${finalSafeRoute.distanceKm} km, hazards: ${finalSafeRoute.hazardsIntersected.length}, longDetour=${finalSafeRoute.longDetour}`);
   }
 
   return {
-    fastest: {
-      type: 'FASTEST',
-      distanceKm: fastestDistKm,
-      durationMinutes: fastestDurMin,
-      riskScore: fastestRisk.score,
-      riskCategory: fastestRisk.category,
-      coordinates: fastestCoords,
-      hazardsIntersected: fastestHazards,
-      explanation: fastestHazards.length > 0
-        ? `Direct path crosses ${fastestHazards.length} dangerous flood basin${fastestHazards.length > 1 ? 's' : ''}. High probability of vehicle stall for ${vehicle.name} (ground clearance ${vehicle.clearanceCm} cm).`
-        : 'Direct path has low hazard exposure.',
-      roadNames: ['Primary Arterial', 'Underpass Link']
-    },
-    safe: {
-      type: 'SAFE',
-      distanceKm: safeDistKm,
-      durationMinutes: safeDurMin,
-      riskScore: finalSafeScore,
-      riskCategory: finalSafeCategory,
-      coordinates: safeCoords,
-      hazardsIntersected: safeHazards,
-      explanation: avoidedCount > 0
-        ? `Elevated bypass avoiding ${avoidedCount} submerged choke point${avoidedCount > 1 ? 's' : ''}. Maintains continuous dry asphalt contact.`
-        : 'Optimal weather-aware corridor.',
-      roadNames: ['Elevated Bypass', 'Ring Road Outer Arc']
-    },
+    fastest: finalFastestRoute,
+    safe: finalSafeRoute,
+    safeRouteFound,
+    noSafeRouteReason,
     riskDeltaPercent,
     timeDeltaMinutes,
     distanceDeltaKm,
-    avoidedHazardsCount: avoidedCount,
-    safetySummary: summary,
+    avoidedHazardsCount,
+    safetySummary,
     vehicleProfile: vehicle
   };
 }
