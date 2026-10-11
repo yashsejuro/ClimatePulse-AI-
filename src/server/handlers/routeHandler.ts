@@ -32,7 +32,7 @@ export async function handleRouteCalculation(body: RouteRequestBody) {
 
     const [activeHazards, weather] = await Promise.all([
       hazardRepo.getActiveHazards(city),
-      weatherAdapter.getWeather(city as CityId)
+      weatherAdapter.getWeather(city as CityId, origin, (body as any).originName)
     ]);
 
     const result = await routingAdapter.calculateRoutes({
@@ -42,9 +42,11 @@ export async function handleRouteCalculation(body: RouteRequestBody) {
       vehicleClearanceCm,
       scenarioId,
       hazards: activeHazards,
-      rainfallMmPerHour: weather.rainfallMmPerHour,
+      rainfallMmPerHour: (body as any).rainfallMmPerHour ?? weather.rainfallMmPerHour,
       city
     });
+
+    result.weather = weather;
 
     logStructured({
       event: 'SAFE_ROUTE_VALIDATION',
@@ -68,7 +70,10 @@ export async function handleRouteCalculation(body: RouteRequestBody) {
 
     return {
       statusCode: 200,
-      data: result
+      data: {
+        ...result,
+        storageProvider: hazardRepo.isUsingDynamoDB() ? 'DYNAMODB' : 'IN_MEMORY_FALLBACK'
+      }
     };
   } catch (err: any) {
     logStructured({

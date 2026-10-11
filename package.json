@@ -10,7 +10,7 @@
     "preview": "vite preview",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "test": "tsx src/services/routeService.test.ts && tsx tests/routing.test.ts"
+    "test": "tsx src/services/routeService.test.ts && tsx tests/routing.test.ts && tsx scripts/verify-aws-readiness.ts"
   },
   "dependencies": {
     "@aws-sdk/client-bedrock-runtime": "^3.1149.0",

@@ -67,6 +67,7 @@ export interface RouteComparisonResponse {
   avoidedHazardsCount: number;
   safetySummary: string;
   vehicleProfile: VehicleProfile;
+  weather?: CityWeather;
 }
 
 export interface CitizenReport {
@@ -93,6 +94,32 @@ export interface CityWeather {
   weatherCondition: string;
   alertLevel: 'NORMAL' | 'ADVISORY' | 'WARNING' | 'EMERGENCY';
   alertMessage: string;
+  locationName?: string;
+  coords?: [number, number];
+  relativeHumidity?: number;
+  windSpeedKmh?: number;
+  source?: string;
+  updatedAt?: string;
+  isRealTime?: boolean;
+  livePrecipitationMm?: number;
+}
+
+export interface PrecipitationGridPoint {
+  id: string;
+  name: string;
+  city: CityId;
+  coords: [number, number];
+  rainfallMmPerHour: number;
+  livePrecipitationMm: number;
+  precipitationProbability: number;
+  intensityLevel: 'DRY' | 'LIGHT' | 'MODERATE' | 'HEAVY' | 'TORRENTIAL';
+  weatherCondition: string;
+  temperatureC: number;
+  relativeHumidity: number;
+  runoffRiskFactor: number; // 0 - 100
+  alertLevel: 'NORMAL' | 'ADVISORY' | 'WARNING' | 'EMERGENCY';
+  updatedAt: string;
+  source: string;
 }
 
 export interface PresetScenario {

@@ -95,7 +95,9 @@ export const HazardsListModal: React.FC<HazardsListModalProps> = ({
                     </span>
                     <span className="flex items-center gap-1 text-emerald-700 font-medium">
                       <ShieldCheck className="w-3.5 h-3.5" />
-                      <span>Verified ({hz.source === 'OFFICIAL_SENSOR' ? 'CIVIC SENSOR' : hz.source.replace('_', ' ')})</span>
+                      <span>
+                        Verified ({hz.source === 'OFFICIAL_SENSOR' ? 'Hydrological Survey' : hz.source === 'CITIZEN_REPORT' ? 'Citizen Report' : 'Satellite Nowcast'})
+                      </span>
                     </span>
                   </div>
                 </div>

@@ -85,6 +85,7 @@ export async function handleCreateReport(body: ReportRequestBody) {
     statusCode: 200,
     data: {
       success: true,
+      storageProvider: reportRepo.isUsingDynamoDB() ? 'DYNAMODB' : 'IN_MEMORY_FALLBACK',
       report: newReport,
       hazard: newHazard,
       validation,

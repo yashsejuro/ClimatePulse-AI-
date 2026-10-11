@@ -7,6 +7,7 @@ import { handleRouteCalculation } from './src/server/handlers/routeHandler.ts';
 import { handleGetHazards, handleResetHazards, handleSeedHazards } from './src/server/handlers/hazardsHandler.ts';
 import { handleGetReports, handleCreateReport } from './src/server/handlers/reportHandler.ts';
 import { handleGenerateBriefing } from './src/server/handlers/briefingHandler.ts';
+import { handleGetStatus } from './src/server/handlers/statusHandler.ts';
 import { getWeatherAdapter } from './src/server/adapters/weatherAdapter.ts';
 import { CityId } from './src/types/index.ts';
 import { INITIAL_HAZARDS } from './src/data/seedHazards.ts';
@@ -47,9 +48,42 @@ app.post('/api/route', async (req, res) => {
 // GET /api/weather
 app.get('/api/weather', async (req, res) => {
   const city = ((req.query.city as string) || 'bengaluru').toLowerCase() as CityId;
+  const latStr = req.query.lat as string | undefined;
+  const lonStr = (req.query.lon || req.query.lng) as string | undefined;
+  const locationName = req.query.locationName as string | undefined;
+
+  let coords: [number, number] | undefined = undefined;
+  if (latStr && lonStr) {
+    const lat = parseFloat(latStr);
+    const lon = parseFloat(lonStr);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      coords = [lat, lon];
+    }
+  }
+
   const weatherAdapter = getWeatherAdapter();
-  const weather = await weatherAdapter.getWeather(city);
+  const weather = await weatherAdapter.getWeather(city, coords, locationName);
   return res.json(weather);
+});
+
+// GET /api/weather/precipitation-grid
+app.get('/api/weather/precipitation-grid', async (req, res) => {
+  const city = ((req.query.city as string) || 'bengaluru').toLowerCase() as CityId;
+  const latStr = req.query.lat as string | undefined;
+  const lonStr = (req.query.lon || req.query.lng) as string | undefined;
+
+  let coords: [number, number] | undefined = undefined;
+  if (latStr && lonStr) {
+    const lat = parseFloat(latStr);
+    const lon = parseFloat(lonStr);
+    if (!isNaN(lat) && !isNaN(lon)) {
+      coords = [lat, lon];
+    }
+  }
+
+  const weatherAdapter = getWeatherAdapter();
+  const grid = await weatherAdapter.getPrecipitationGrid(city, coords);
+  return res.json(grid);
 });
 
 // POST /api/report & POST /api/reports/verify
@@ -65,6 +99,14 @@ app.post('/api/ai-briefing', async (req, res) => {
   const result = await handleGenerateBriefing(req.body);
   return res.status(result.statusCode).json(result.data);
 });
+
+// GET /api/status & GET /api/aws-status (Demonstrable AWS Serverless Status)
+const statusController = async (_req: express.Request, res: express.Response) => {
+  const result = await handleGetStatus();
+  return res.status(result.statusCode).json(result.data);
+};
+app.get('/api/status', statusController);
+app.get('/api/aws-status', statusController);
 
 // POST /api/reset-hazards
 app.post('/api/reset-hazards', async (req, res) => {

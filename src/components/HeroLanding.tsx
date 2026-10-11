@@ -9,7 +9,8 @@ import {
   ArrowRight,
   X,
   Crosshair,
-  Sparkles
+  Sparkles,
+  Cloud
 } from 'lucide-react';
 import { CityId, PresetScenario } from '../types';
 import { CITIES } from '../data/cities';
@@ -23,6 +24,7 @@ interface HeroLandingProps {
   currentCity: CityId;
   onSelectCity: (city: CityId) => void;
   isDetectingLocation?: boolean;
+  onOpenAwsArchitecture?: () => void;
 }
 
 export const HeroLanding: React.FC<HeroLandingProps> = ({
@@ -33,7 +35,8 @@ export const HeroLanding: React.FC<HeroLandingProps> = ({
   scenarios,
   currentCity,
   onSelectCity,
-  isDetectingLocation = false
+  isDetectingLocation = false,
+  onOpenAwsArchitecture
 }) => {
   if (!isOpen) return null;
 
@@ -205,13 +208,28 @@ export const HeroLanding: React.FC<HeroLandingProps> = ({
             </div>
           </div>
 
-          {/* Footer note */}
-          <div className="pt-3 border-t border-gray-100 flex items-center justify-between text-xs text-gray-500">
-            <span>Powered by OpenStreetMap OSRM & Crowd-Sensed Hydrology</span>
+          {/* Footer note with AWS Architecture Link */}
+          <div className="pt-3 border-t border-gray-100 flex flex-col sm:flex-row sm:items-center justify-between gap-2 text-xs text-gray-500">
+            <div className="flex items-center gap-3">
+              <span>Powered by OpenStreetMap OSRM & Crowd-Sensed Hydrology</span>
+              {onOpenAwsArchitecture && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    onOpenAwsArchitecture();
+                  }}
+                  className="text-blue-700 font-semibold hover:underline cursor-pointer flex items-center gap-1"
+                >
+                  <Cloud className="w-3.5 h-3.5" />
+                  <span>AWS Architecture</span>
+                </button>
+              )}
+            </div>
             <button
               type="button"
               onClick={onClose}
-              className="text-emerald-700 font-semibold hover:underline cursor-pointer"
+              className="text-emerald-700 font-semibold hover:underline cursor-pointer text-right"
             >
               Continue to map →
             </button>

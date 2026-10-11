@@ -197,6 +197,25 @@ async function runVerification() {
   assert(weatherData.rainfallMmPerHour > 0, 'Rainfall intensity available', `${weatherData.rainfallMmPerHour} mm/h`);
 
   // ----------------------------------------------------
+  // TEST 7: GET /api/status (AWS Serverless Status & Demonstrability)
+  // ----------------------------------------------------
+  console.log('\n--- 7. AWS Serverless Architecture Status ---');
+  const statusEvent = {
+    httpMethod: 'GET',
+    path: '/api/status',
+    headers: {}
+  };
+  const statusRes = await lambdaHandler(statusEvent);
+  assert(statusRes.statusCode === 200, 'GET /api/status returns HTTP 200');
+  const statusData = JSON.parse(statusRes.body);
+  assert(statusData.deploymentStatus === 'DEPLOYMENT_READY_PROTOTYPE', 'Deployment status is DEPLOYMENT_READY_PROTOTYPE');
+  assert(statusData.liveDeploymentVerified === false, 'Transparent non-live status confirmed (no false deployment claims)');
+  assert(statusData.services.lambda.status === 'IMPLEMENTED', 'Lambda handler is IMPLEMENTED');
+  assert(statusData.services.dynamodb.status === 'LOCAL_FALLBACK_ONLY' || statusData.services.dynamodb.status === 'IMPLEMENTED', 'DynamoDB status verified');
+  assert(statusData.services.bedrock.status === 'LOCAL_FALLBACK_ONLY' || statusData.services.bedrock.status === 'IMPLEMENTED', 'Bedrock status verified');
+  assert(statusData.services.sam.status === 'IMPLEMENTED', 'AWS SAM is DEFINED/IMPLEMENTED');
+
+  // ----------------------------------------------------
   // Summary
   // ----------------------------------------------------
   console.log('\n====================================================');

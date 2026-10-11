@@ -2,6 +2,7 @@ import { routeLambdaHandler } from './handlers/routeHandler';
 import { hazardsLambdaHandler } from './handlers/hazardsHandler';
 import { reportLambdaHandler } from './handlers/reportHandler';
 import { briefingLambdaHandler } from './handlers/briefingHandler';
+import { statusLambdaHandler } from './handlers/statusHandler';
 import { getWeatherAdapter } from './adapters/weatherAdapter';
 import { APIGatewayEvent, APIGatewayResponse } from './types/api';
 import { CityId } from '../types';
@@ -52,10 +53,53 @@ export async function handler(event: any): Promise<APIGatewayResponse> {
       return await briefingLambdaHandler(normalizedEvent);
     }
 
+    if ((path.includes('/api/status') || path.includes('/api/aws-status')) && method === 'GET') {
+      return await statusLambdaHandler(normalizedEvent);
+    }
+
+    if (path.includes('/api/weather/precipitation-grid') && method === 'GET') {
+      const city = ((event.queryStringParameters?.city || 'bengaluru') as string).toLowerCase() as CityId;
+      const latStr = event.queryStringParameters?.lat;
+      const lonStr = event.queryStringParameters?.lon || event.queryStringParameters?.lng;
+
+      let coords: [number, number] | undefined = undefined;
+      if (latStr && lonStr) {
+        const lat = parseFloat(latStr);
+        const lon = parseFloat(lonStr);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          coords = [lat, lon];
+        }
+      }
+
+      const weatherAdapter = getWeatherAdapter();
+      const grid = await weatherAdapter.getPrecipitationGrid(city, coords);
+      return {
+        statusCode: 200,
+        headers: {
+          'Content-Type': 'application/json',
+          'Access-Control-Allow-Origin': '*'
+        },
+        body: JSON.stringify(grid)
+      };
+    }
+
     if (path.includes('/api/weather') && method === 'GET') {
       const city = ((event.queryStringParameters?.city || 'bengaluru') as string).toLowerCase() as CityId;
+      const latStr = event.queryStringParameters?.lat;
+      const lonStr = event.queryStringParameters?.lon || event.queryStringParameters?.lng;
+      const locationName = event.queryStringParameters?.locationName;
+
+      let coords: [number, number] | undefined = undefined;
+      if (latStr && lonStr) {
+        const lat = parseFloat(latStr);
+        const lon = parseFloat(lonStr);
+        if (!isNaN(lat) && !isNaN(lon)) {
+          coords = [lat, lon];
+        }
+      }
+
       const weatherAdapter = getWeatherAdapter();
-      const weather = await weatherAdapter.getWeather(city);
+      const weather = await weatherAdapter.getWeather(city, coords, locationName);
       return {
         statusCode: 200,
         headers: {
