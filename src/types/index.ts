@@ -53,6 +53,7 @@ export interface RouteOption {
   explanation: string;
   roadNames?: string[];
   longDetour?: boolean;
+  source?: string;
 }
 
 export interface RouteComparisonResponse {

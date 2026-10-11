@@ -186,12 +186,14 @@ export interface CandidateRoute {
   distanceKm: number;
   durationMinutes: number;
   hazardsIntersected: IntersectedHazard[];
-  source: string;
+  source: 'OSRM';
+  snappedWaypoints?: [number, number][];
 }
 
 export interface OSRMFetchResult {
   routes: CandidateRoute[];
   failed: boolean;
+  snappedWaypoints?: [number, number][];
 }
 
 /**
@@ -221,6 +223,16 @@ export async function fetchOSRMRouteResult(
       return { routes: results, failed: false };
     }
 
+    // Extract road-network snapped waypoints from OSRM response
+    const snappedWaypoints: [number, number][] = [];
+    if (Array.isArray(data.waypoints)) {
+      for (const wp of data.waypoints) {
+        if (wp?.location && Array.isArray(wp.location) && wp.location.length >= 2) {
+          snappedWaypoints.push([wp.location[1], wp.location[0]]); // [lat, lng]
+        }
+      }
+    }
+
     for (const route of data.routes) {
       if (route.geometry?.coordinates?.length > 1) {
         const coords: [number, number][] = route.geometry.coordinates.map(
@@ -231,11 +243,12 @@ export async function fetchOSRMRouteResult(
           distanceKm: Math.round((route.distance / 1000) * 10) / 10,
           durationMinutes: Math.round(route.duration / 60),
           hazardsIntersected: [],
-          source: 'OSRM'
+          source: 'OSRM',
+          snappedWaypoints
         });
       }
     }
-    return { routes: results, failed: false };
+    return { routes: results, failed: false, snappedWaypoints };
   } catch (err) {
     clearTimeout(timeoutId);
     return { routes: results, failed: true };
@@ -488,6 +501,27 @@ export async function calculateDualRoutes(
           }
           if (wpRes.routes.length > 0) {
             const r = wpRes.routes[0];
+
+            // Strict invariant: route must come from real OSRM road network geometry
+            if (r.source !== 'OSRM' || !r.coordinates || r.coordinates.length < 2) {
+              continue;
+            }
+
+            // Verify bypass waypoint is within the road network:
+            // If OSRM returned snapped waypoints, verify that the bypass waypoint was snapped onto the road network
+            // and that its snapped road location does not land inside an active hazard.
+            if (wpRes.snappedWaypoints && wpRes.snappedWaypoints.length >= 2) {
+              const snappedBypass = wpRes.snappedWaypoints.length >= 3 ? wpRes.snappedWaypoints[1] : wpRes.snappedWaypoints[0];
+              const isSnappedInsideHazard = activeCityHazards.some((h) => {
+                const d = calculateDistanceMeters(snappedBypass[0], snappedBypass[1], h.center[0], h.center[1]);
+                return d <= h.radiusMeters * 1.05;
+              });
+              if (isSnappedInsideHazard) {
+                // Discard candidate: snapped road location falls inside an active hazard
+                continue;
+              }
+            }
+
             const rHazards = detectHazardIntersections(r.coordinates, activeCityHazards);
             r.hazardsIntersected = rHazards;
 
@@ -552,7 +586,8 @@ export async function calculateDualRoutes(
         geometry: safeCandidate.coordinates,
         hazardsIntersected: verifiedSafeHazards,
         explanation: safeExplanation,
-        longDetour: isLongDetour
+        longDetour: isLongDetour,
+        source: 'OSRM'
       };
     } else {
       console.warn(`[ROUTING SAFETY CHECK] Candidate safe route intersects blocking hazards:`, blockingHazardsOnSafe);
@@ -605,7 +640,8 @@ export async function calculateDualRoutes(
     coordinates: fastestCandidate.coordinates,
     geometry: fastestCandidate.coordinates,
     hazardsIntersected: fastestHazards,
-    explanation: fastestExplanation
+    explanation: fastestExplanation,
+    source: 'OSRM'
   };
 
   const avoidedHazardsCount = finalSafeRoute
