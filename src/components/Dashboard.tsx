@@ -770,6 +770,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             onClick={() => setRealtimeHazardAlert(null)}
             className="text-red-200 hover:text-white p-1 rounded-lg hover:bg-red-700/50 cursor-pointer"
             title="Close alert"
+            aria-label="Close alert"
           >
             <X className="w-5 h-5" />
           </button>
