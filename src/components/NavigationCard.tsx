@@ -211,6 +211,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                       type="button"
                       onClick={() => onChangeOrigin('')}
                       className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      aria-label="Clear origin"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
@@ -287,6 +288,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                   type="button"
                   onClick={handleSwap}
                   title="Swap locations"
+                  aria-label="Swap locations"
                   className="flex items-center gap-1 text-[11px] text-gray-400 hover:text-gray-700 p-0.5 rounded cursor-pointer transition-colors"
                 >
                   <ArrowUpDown className="w-3 h-3" />
@@ -326,6 +328,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                       type="button"
                       onClick={() => onChangeDestination('')}
                       className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
+                      aria-label="Clear destination"
                     >
                       <X className="w-3.5 h-3.5" />
                     </button>
