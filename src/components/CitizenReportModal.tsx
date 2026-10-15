@@ -136,12 +136,13 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
           <form onSubmit={handleSubmit} className="p-5 space-y-4">
             {/* Location Input */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-700">
+              <label htmlFor="address-input" className="block text-xs font-medium text-gray-700">
                 Location
               </label>
               <div className="relative">
                 <MapPin className="absolute left-3 top-3 w-4 h-4 text-gray-400 pointer-events-none" />
                 <input
+                  id="address-input"
                   type="text"
                   required
                   placeholder="Street name or landmark..."
@@ -155,7 +156,7 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
             {/* Water Depth Slider & Input */}
             <div className="space-y-2">
               <div className="flex items-center justify-between">
-                <label className="text-xs font-medium text-gray-700">
+                <label htmlFor="depth-slider" className="text-xs font-medium text-gray-700">
                   Water depth
                 </label>
                 <div className="flex items-center gap-1 font-mono text-xs font-semibold text-gray-900">
@@ -165,6 +166,7 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
               </div>
 
               <input
+                id="depth-slider"
                 type="range"
                 min="10"
                 max="80"
@@ -187,7 +189,7 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
 
             {/* Photo Upload */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-700">
+              <label htmlFor="photo-upload" className="block text-xs font-medium text-gray-700">
                 Photo <span className="text-gray-400 font-normal">(optional)</span>
               </label>
 
@@ -198,6 +200,7 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
                     type="button"
                     onClick={() => setImagePreview(null)}
                     className="absolute top-2 right-2 p-1 rounded-full bg-white/90 text-gray-700 hover:bg-white shadow-xs cursor-pointer text-xs"
+                    aria-label="Remove photo"
                   >
                     <X className="w-4 h-4" />
                   </button>
@@ -209,7 +212,7 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
                     <span className="text-xs text-gray-600 font-medium">Upload photo</span>
                     <span className="text-[10px] text-gray-400">PNG, JPG up to 10MB</span>
                   </div>
-                  <input type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
+                  <input id="photo-upload" type="file" accept="image/*" onChange={handleFileUpload} className="hidden" />
                 </label>
               )}
 
@@ -231,10 +234,11 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
 
             {/* Notes */}
             <div className="space-y-1.5">
-              <label className="block text-xs font-medium text-gray-700">
+              <label htmlFor="notes-textarea" className="block text-xs font-medium text-gray-700">
                 Notes <span className="text-gray-400 font-normal">(optional)</span>
               </label>
               <textarea
+                id="notes-textarea"
                 rows={2}
                 placeholder="Additional details about the flood condition..."
                 value={userNotes}
