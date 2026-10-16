@@ -209,6 +209,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                   {originText ? (
                     <button
                       type="button"
+                      aria-label="Clear origin"
                       onClick={() => onChangeOrigin('')}
                       className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
                     >
@@ -324,6 +325,7 @@ export const NavigationCard: React.FC<NavigationCardProps> = ({
                   {destinationText && (
                     <button
                       type="button"
+                      aria-label="Clear destination"
                       onClick={() => onChangeDestination('')}
                       className="p-1 text-gray-400 hover:text-gray-600 cursor-pointer"
                     >

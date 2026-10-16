@@ -22,6 +22,7 @@ export const HazardsListModal: React.FC<HazardsListModalProps> = ({
       <div className="relative w-full max-w-2xl bg-white border border-gray-200 rounded-xl shadow-xl p-6 text-gray-900 max-h-[85vh] flex flex-col">
         <button
           onClick={onClose}
+          aria-label="Close hazards list"
           className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
         >
           <X className="w-5 h-5" />
