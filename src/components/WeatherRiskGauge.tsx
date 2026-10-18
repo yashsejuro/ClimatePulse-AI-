@@ -77,6 +77,7 @@ export const WeatherRiskGauge: React.FC<WeatherRiskGaugeProps> = ({
               disabled={isRefreshing}
               className="text-gray-400 hover:text-gray-600 p-0.5 rounded cursor-pointer disabled:opacity-50"
               title="Refresh real-time weather"
+              aria-label="Refresh real-time weather"
             >
               <RefreshCw className={`w-3 h-3 ${isRefreshing ? 'animate-spin text-sky-600' : ''}`} />
             </button>

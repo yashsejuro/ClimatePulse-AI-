@@ -198,6 +198,7 @@ export const CitizenReportModal: React.FC<CitizenReportModalProps> = ({
                     type="button"
                     onClick={() => setImagePreview(null)}
                     className="absolute top-2 right-2 p-1 rounded-full bg-white/90 text-gray-700 hover:bg-white shadow-xs cursor-pointer text-xs"
+                    aria-label="Remove image"
                   >
                     <X className="w-4 h-4" />
                   </button>
