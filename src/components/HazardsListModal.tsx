@@ -22,7 +22,8 @@ export const HazardsListModal: React.FC<HazardsListModalProps> = ({
       <div className="relative w-full max-w-2xl bg-white border border-gray-200 rounded-xl shadow-xl p-6 text-gray-900 max-h-[85vh] flex flex-col">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer"
+          aria-label="Close hazards list"
+          className="absolute top-4 right-4 p-1.5 text-gray-400 hover:text-gray-600 rounded-lg hover:bg-gray-100 transition-colors cursor-pointer focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-emerald-500"
         >
           <X className="w-5 h-5" />
         </button>
@@ -41,8 +42,14 @@ export const HazardsListModal: React.FC<HazardsListModalProps> = ({
 
         <div className="overflow-y-auto space-y-2.5 pr-1 flex-1">
           {hazards.length === 0 ? (
-            <div className="text-center py-8 text-gray-500 text-sm">
-              No active flood hazards recorded in this region.
+            <div className="flex flex-col items-center justify-center py-10 px-4 text-center border-2 border-dashed border-emerald-100 rounded-xl bg-emerald-50/50">
+              <div className="w-12 h-12 rounded-full bg-emerald-100 flex items-center justify-center text-emerald-600 mb-3">
+                <ShieldCheck className="w-6 h-6" />
+              </div>
+              <h4 className="text-sm font-semibold text-emerald-900 mb-1">Clear Routes Ahead</h4>
+              <p className="text-xs text-emerald-700/80 max-w-sm">
+                No active flood hazards recorded in this region.
+              </p>
             </div>
           ) : (
             hazards.map((hz) => {
