@@ -1,0 +1,3 @@
+## 2024-03-24 - Celebrating Positive Empty States
+**Learning:** An empty state for hazard warnings (0 hazards found) is functionally a positive state for the user. Displaying a bland "No data" or "No hazards" text misses an opportunity to reassure the user.
+**Action:** When designing lists that display negative events (like hazards, errors, or alerts), always style the empty state as a reassuring confirmation (e.g., using a green `ShieldCheck` icon, positive phrasing like "Clear Routes Ahead", and reassuring background colors) instead of a generic empty table or "No data" text.
